@@ -130,7 +130,8 @@ def run_migrations_and_seeding():
             home_zone_id BIGINT,
             created_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_modified_by VARCHAR(50),
-            last_modified_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            last_modified_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            embedding VECTOR(512)
         );
         """,
         # Cameras Table
@@ -141,19 +142,16 @@ def run_migrations_and_seeding():
             name VARCHAR(100) NOT NULL,
             source VARCHAR(255),
             location VARCHAR(100),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            zone_id VARCHAR(100) REFERENCES zones(id) ON DELETE CASCADE
         );
         """,
         # Zones Table
         """
         CREATE TABLE IF NOT EXISTS zones (
             id VARCHAR(100) PRIMARY KEY,
-            camera_id VARCHAR(100) REFERENCES cameras(id) ON DELETE CASCADE,
-            name VARCHAR(100) NOT NULL,
-            x1 INTEGER,
-            y1 INTEGER,
-            x2 INTEGER,
-            y2 INTEGER
+            user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+            name VARCHAR(100) NOT NULL
         );
         """,
         # Detections Table

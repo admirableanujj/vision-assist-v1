@@ -1,0 +1,77 @@
++-----------------------------------------------------------------------------------+
+|                                  REACT FRONTEND                                   |
+|   (Vite + Tailwind CSS / React WebCam / Canvas Overlay / WebSocket Audio Client)  |
++-----------------------------------------------------------------------------------+
+                                   │            ▲
+                      REST APIs    │            │  WebSockets
+               (Auth / Config / DB)│            │  (Live Frames & Bounding Boxes)
+                                   ▼            │
++-----------------------------------------------------------------------------------+
+|                                 FASTAPI BACKEND                                   |
+|  /api/v1/health   │  /ws/vision-feed    │  /ws/audio-stream   │  /api/v1/query    |
++-----------------------------------------------------------------------------------+
+       │                   │                      │                   │
+       ▼                   ▼                      ▼                   ▼
+ +-----------+     +---------------+      +---------------+    +--------------+
+ | PostgreSQL|     |  YOLO / YOLOE |      | Whisper / TTS |    | Ollama / GPT |
+ | (Users/Log)     | (Vision Matrix)      | (Audio Pipe)  |    | & Qdrant Vector|
+ +-----------+     +---------------+      +---------------+    +--------------+
+
+Structure
+---------
+vision-assist/
+├── docker-compose.yml
+├── README.md
+├── secrets/                     <-- Git-ignored secrets directory
+│   ├── postgres_password.txt
+│   └── qdrant_api_key.txt
+│
+├── backend/                     <-- FastAPI / ML Service Domain
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── main.py                  <-- FastAPI Entrypoint & Uvicorn runner
+│   └── app/
+│       ├── __init__.py
+│       ├── api/                 <-- HTTP REST Routes & WebSocket Endpoints
+│       │   ├── __init__.py
+│       │   ├── router.py        <-- Combines all route modules
+│       │   ├── vision_routes.py <-- /ws/vision WebSocket
+│       │   ├── audio_routes.py  <-- /ws/audio WebSocket
+│       │   ├── auth_routes.py   <-- Replaces login_view.py (REST endpoints: /api/v1/auth/login, /register)
+│       │   └── chat_routes.py   <-- REST endpoints for conversation/DB
+│       ├── core/                <-- Config, Security, DB Connections
+│       │   ├── config.py        <-- Secret loading & environment settings
+│       │   ├── database.py      <-- PostgreSQL / SQLAlchemy session setup
+│       │   ├── security.py       <-- Password hashing (SHA-256 / bcrypt), JWT tokens
+│       │   └── logging_config.py
+│       ├── engines/             <-- Core ML/AI Domain Logic (Migrated from old /app)
+│       │   ├── vision/          <-- YOLO / YOLOE detection engines
+│       │   ├── voice/           <-- Whisper STT & TTS pipeline
+│       │   └── ml/              <-- Ollama, OpenAI, Query Classifier, Qdrant
+│       ├── services/
+│       │   └── user_service.py    <-- Replaces user_mgr / UserManager logic (DB queries, user CRUD)
+│       └── models/              <-- SQLAlchemy DB Models & Pydantic Schemas
+│           ├── db_models.py     <-- User, UserLogin, and Role PostgreSQL schemas
+│           └── schemas.py       <-- Pydantic request/response models (UserCreate, UserResponse)
+│
+└── frontend/                    <-- React / SPA Frontend Domain
+    ├── Dockerfile
+    ├── package.json
+    ├── vite.config.js
+    ├── tailwind.config.js
+    ├── public/                  <-- Static assets, favicons
+    └── src/
+        ├── main.jsx             <-- React entrypoint
+        ├── App.jsx              <-- Main Dashboard Shell
+        ├── components/          <-- Reusable UI Components
+        │   ├── VideoFeed.jsx    <-- WebCam + Canvas bounding box painter
+        │   ├── AudioRecorder.jsx<-- Microphone capture & waveform visualizer
+        │   ├── SystemStatus.jsx <-- Postgres/Qdrant/Ollama health indicators
+        │   ├── LoginModal.jsx 
+        │   └── ContextPanel.jsx <-- Spatial memory & conversation stream
+        ├── hooks/               <-- Custom React Hooks
+        │   ├── useVisionWS.js   <-- WebSocket hook for real-time video frames
+        │   └── useAudioWS.js    <-- WebSocket hook for audio streaming
+        └── services/            <-- Axios / Fetch REST API client helper
+            └── api.js
+
