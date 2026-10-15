@@ -45,14 +45,14 @@ Upload both as Kaggle Datasets so `evaluate.py` can read them from the training 
 ### 2. Train on Kaggle (free GPU)
 
 1. Go to kaggle.com → Create → New Notebook.
-2. Settings (right sidebar) → Accelerator → **GPU T4 x2** (or P100). No credit card needed.
+2. Settings (right sidebar) → Accelerator → **GPU T4 x2** (or P100). No credit card needed, but GPU access requires phone-number verification on your Kaggle account (CPU-only without it).
 3. Upload `prepare_dataset.py` as a Kaggle Dataset (or a notebook "Add Data" → "Upload" of just that file) and attach it to the notebook, so cell 2 can call it.
 4. Upload `train_kaggle.ipynb` itself (File → Import Notebook), or copy its cells into a fresh Kaggle notebook.
 5. Run cells top to bottom:
    - Cell 1 installs `ultralytics==8.4.106` (matches this repo's pin).
    - Cells 2-3 trigger LVIS (~20.7GB) and COCO downloads via one throwaway epoch each — interrupt (Kaggle's stop button) right after each logs its first epoch starting, or let them finish; either way the dataset lands on disk.
    - Cell 4 runs `prepare_dataset.py` to build the merged `lostfound.yaml`.
-   - Cell 5 trains: `freeze=10`, `AdamW`, `lr0=0.001`, `patience=15`, 100 epochs (early-stops on plateau). Expect roughly 1-3 hours on a single T4 (Guide Section 8) — well inside Kaggle's 12-hour session cap and ~30 GPU-hr/week quota.
+   - Cell 5 trains: `freeze=10`, `AdamW`, `lr0=0.001`, `patience=15`, 100 epochs (early-stops on plateau). Expect roughly 1-3 hours on a single T4 (Guide Section 8) — well inside Kaggle's session cap (9-12 hours depending on source; check your notebook's own settings) and ~30 GPU-hr/week quota.
    - Cell 6 sanity-checks the result against the merged dataset's own val split (not the real eval — just confirms the new classes learned something).
 6. Download `best.pt` from the notebook's Output tab (`/kaggle/working/runs/lostfound_yolo26n/weights/best.pt`).
 

@@ -51,13 +51,21 @@ and combine with a COCO sample for the original 80 (Section 6).
 
 ### Fallback: Roboflow Universe (per-class, if LVIS counts are too sparse)
 
-- Keys: "Keysdetection" by SHEHAB EMAD — 882 images
-- Wallet: "wallet" by Mohamed Hussam — 418 images
-- Sunglasses: "Sunglasses" by "Data" — 9,997 images, CC BY 4.0
+**Specific dataset names below are unverified — a search-based recheck in
+October 2026 found no trace of a "Keysdetection" project by SHEHAB EMAD or a
+"wallet" project by Mohamed Hussam under those names, and only a
+differently-owned sunglasses project in roughly the right size range.**
+Roboflow's anti-bot protection blocks automated page fetches, so this
+couldn't be settled definitively either way. Treat the counts below as
+illustrative of what to look for, not a citation — open Roboflow Universe
+and search for current keys/wallet/sunglasses datasets directly, and confirm
+image counts + license before downloading:
 
-All three confirmed live as of this writing (search-indexed; Roboflow's own
-anti-bot protection blocks automated page fetches — open each page manually and
-confirm the license before downloading). Sunglasses alone outweighs keys+wallet
+- Keys: ~a few hundred images is a realistic size for a community keys-detection dataset
+- Wallet: similarly, low hundreds of images
+- Sunglasses: datasets in the thousands exist (a sunglasses-detection project with ~10K images was found under a different owner than previously cited here)
+
+Whatever set you land on, sunglasses will likely outweigh keys+wallet
 combined by ~7–10x — mitigate with undersampling/augmentation, don't train on
 the raw counts. Standard checklist before merging any community dataset:
 annotation-quality spot check (~50–100 images per source), deduplication,
@@ -280,9 +288,14 @@ mAP.
 
 ## 8. Free GPU: Kaggle
 
-Kaggle Notebooks free tier: T4/P100, ~30 GPU-hours/week quota, 12-hour session
-cap, no credit card required. For a nano model on a low-thousands-of-images
-merged dataset, expect roughly 1–3 hours for 50–100 epochs on a single T4.
+Kaggle Notebooks free tier: T4/P100, ~30 GPU-hours/week quota, no credit card
+required — but GPU access does require phone-number verification (CPU-only
+without it). Session length cap is reported inconsistently across sources
+(9 vs. 12 hours) and couldn't be settled definitively here — check the
+current limit in Kaggle's own notebook settings at creation time rather than
+assuming either number. For a nano model on a low-thousands-of-images merged
+dataset, expect roughly 1–3 hours for 50–100 epochs on a single T4, comfortably
+inside either cap.
 
 ## 9. Code changes needed in this repo once this is executed
 
