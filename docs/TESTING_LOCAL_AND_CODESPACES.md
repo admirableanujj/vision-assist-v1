@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS user_login_history (
     user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
     login_status VARCHAR(20) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_modified_by VARCHAR(50)
+    last_modified_by VARCHAR(50),
+    last_modified_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 INSERT INTO users (guid_user, username, first_name, last_name, email, role, is_active)
@@ -94,8 +95,9 @@ printf '%s' 'devpassword123' > secrets/postgres_password.txt
 printf '%s' 'unused-for-now' > secrets/qdrant_api_key.txt
 ```
 
-Edit `.env` and make sure `POSTGRES_PASSWORD` matches the secret file above
-(`devpassword123`), `POSTGRES_USER=postgres`, `POSTGRES_DB=vision_assist`.
+Edit `.env` and set `POSTGRES_USER=postgres`, `POSTGRES_DB=vision_assist` —
+the password itself comes only from `secrets/postgres_password.txt`
+(`POSTGRES_PASSWORD_FILE` in `docker-compose.yml`), not from `.env`.
 
 Bring up just what vision testing needs — `--no-deps` skips `backend`'s
 `ollama`/`qdrant` dependency check, so you don't need those containers at all:
