@@ -51,15 +51,19 @@ CREATE TABLE IF NOT EXISTS user_login_history (
     last_modified_by VARCHAR(50), last_modified_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 INSERT INTO users (guid_user, username, first_name, last_name, email, role, is_active)
-VALUES (gen_random_uuid()::text, 'test_user', 'Test', 'User', 'test@visionassist.local', 1, TRUE);
+VALUES (gen_random_uuid()::text, 'test_user', 'Test', 'User', 'test@visionassist.local', 1, TRUE)
+ON CONFLICT (username) DO NOTHING;
 INSERT INTO user_login (user_id, hashed_password)
-SELECT id, '$HASH' FROM users WHERE username = 'test_user';
+SELECT id, '$HASH' FROM users WHERE username = 'test_user'
+ON CONFLICT (user_id) DO UPDATE SET hashed_password = EXCLUDED.hashed_password;
 EOF
 
 echo ""
 echo "Open: https://${CODESPACE_NAME}-3000.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
 echo "Login: test_user / test_user"
 ```
+
+Safe to re-run — `ON CONFLICT` means it won't fail if `test_user` already exists (e.g. from an earlier attempt or after a `docker-compose down` without `-v`); it just refreshes the password hash each time.
 
 Click the printed URL (if the port shows Private and won't load: Ports tab →
 right-click port 3000 → Port Visibility → Public), log in, allow camera
@@ -93,10 +97,18 @@ the failure is swallowed, so the backend boots as if nothing went wrong.
 with "relation does not exist."** The direct WebSocket check below doesn't
 need this at all, since it never touches auth.
 
-Once `postgres` is up (see setup below), create just enough schema by hand:
+Once `postgres` is up (see setup below), create just enough schema by hand
+and seed a test login. `auth_routes.py` checks the password against
+`salt:sha256(password + salt)` (`app/core/security.py`'s `verify_password`):
 
 ```bash
-docker exec -i vision_assist_db psql -U postgres -d vision_assist << 'EOF'
+HASH=$(python3 -c "
+import hashlib, uuid
+salt = uuid.uuid4().hex
+print(f'{salt}:' + hashlib.sha256(('test_user' + salt).encode()).hexdigest())
+")
+
+docker exec -i vision_assist_db psql -U postgres -d vision_assist << EOF
 CREATE TABLE IF NOT EXISTS users (
     id BIGSERIAL PRIMARY KEY,
     guid_user VARCHAR(36) UNIQUE,
@@ -132,35 +144,18 @@ CREATE TABLE IF NOT EXISTS user_login_history (
 
 INSERT INTO users (guid_user, username, first_name, last_name, email, role, is_active)
 VALUES (gen_random_uuid()::text, 'test_user', 'Test', 'User', 'test@visionassist.local', 1, TRUE)
-RETURNING id;
+ON CONFLICT (username) DO NOTHING;
+
+INSERT INTO user_login (user_id, hashed_password)
+SELECT id, '$HASH' FROM users WHERE username = 'test_user'
+ON CONFLICT (user_id) DO UPDATE SET hashed_password = EXCLUDED.hashed_password;
 EOF
 ```
 
-That last `INSERT` prints the new user's `id` — use it below. `auth_routes.py`
-checks the password against `salt:sha256(password + salt)`
-(`app/core/security.py`'s `verify_password`). Generate one for the password
-`test_user`:
-
-```bash
-python3 -c "
-import hashlib, uuid
-salt = uuid.uuid4().hex
-pw = 'test_user'
-h = hashlib.sha256((pw + salt).encode()).hexdigest()
-print(f'{salt}:{h}')
-"
-```
-
-Then insert it (replace `<id>` with the id printed above, and `<hash>` with
-the full `salt:hash` string printed above):
-
-```bash
-docker exec vision_assist_db psql -U postgres -d vision_assist \
-  -c "INSERT INTO user_login (user_id, hashed_password) VALUES (<id>, '<hash>');"
-```
-
-You can now log in with `test_user` / `test_user`. This is a workaround, not
-a fix — the real fix belongs in `precheck_db.py`.
+Safe to re-run (`ON CONFLICT` means it won't fail if `test_user` already
+exists — it just refreshes the password hash). You can now log in with
+`test_user` / `test_user`. This is a workaround, not a fix — the real fix
+belongs in `precheck_db.py`.
 
 ## Local (Docker)
 
@@ -219,7 +214,7 @@ live bounding boxes drawn client-side as `useVisionWS.js` receives detections.
 Confirm which engine is actually running:
 ```bash
 docker logs vision_assist_api | grep -i "VisionEngine loaded"
-# "YOLOVisionEngine loaded 'yolo26n.pt' (conf>=0.5)." by default
+# "YOLOVisionEngine loaded '/opt/weights/yolo26n.pt' (conf>=0.5)." by default
 ```
 
 ### Switching to YOLOE
@@ -228,7 +223,7 @@ docker logs vision_assist_api | grep -i "VisionEngine loaded"
 echo "VISION_MODEL_TYPE=yoloe" >> .env
 docker-compose up -d --no-deps backend   # restart only, no rebuild — env vars are read at import time
 docker logs vision_assist_api | grep -i "VisionEngine loaded"
-# "YOLOEVisionEngine loaded 'yoloe-26n-seg.pt' with classes=[...] (conf>=0.5)."
+# "YOLOEVisionEngine loaded '/opt/weights/yoloe-26n-seg.pt' with classes=[...] (conf>=0.5)."
 ```
 
 Re-run Option A or B with the same photo. Expect `keys`/`wallet`/`sunglasses`

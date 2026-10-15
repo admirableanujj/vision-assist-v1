@@ -56,8 +56,8 @@ VISION_MODEL_TYPE=yolo
 Confirm which engine actually loaded via the backend's logs:
 ```bash
 docker logs -f vision_assist_api
-# look for: "YOLOVisionEngine loaded 'yolo26n.pt' (conf>=0.5)."
-# or:       "YOLOEVisionEngine loaded 'yoloe-26n-seg.pt' with classes=[...] (conf>=0.5)."
+# look for: "YOLOVisionEngine loaded '/opt/weights/yolo26n.pt' (conf>=0.5)."
+# or:       "YOLOEVisionEngine loaded '/opt/weights/yoloe-26n-seg.pt' with classes=[...] (conf>=0.5)."
 ```
 
 `vision_routes.py` also logs which engine class is live the moment a browser
