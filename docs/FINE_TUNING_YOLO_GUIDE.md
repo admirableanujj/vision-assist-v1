@@ -1,7 +1,10 @@
-# Fine-Tuning YOLO26n: Plan (Not Yet Implemented)
+# Fine-Tuning YOLO26n: Plan
 
-**Status: planning only.** Nothing in this document has been executed — no
-dataset downloaded, no training run, no code changed.
+**Status: implementation ready, not yet run.** The dataset-prep script,
+Kaggle training notebook, and three-way eval harness described below exist
+in `finetuning/` (see `finetuning/README.md` for exact run steps) — but no
+training job has actually been executed: no dataset downloaded, no
+checkpoint produced, nothing merged into the app's deployed weights.
 
 ## 1. The problem, precisely
 
@@ -78,11 +81,41 @@ model.train(
 )
 ```
 
-`freeze=10` (backbone frozen, only neck + detection head train) is the right
-starting point for "small dataset, similar domain to COCO" — Ultralytics' own
-guidance. The merged dataset will likely land in the low thousands of images.
-Fall back to `freeze=None` if new-class mAP stays weak after ~50 epochs — safer
-here since the dataset includes mixed-in COCO examples (Section 6).
+`freeze=10` is the right starting point for "small dataset, similar domain to
+COCO" — Ultralytics' own guidance. The merged dataset will likely land in the
+low thousands of images. Fall back to `freeze=None` if new-class mAP stays
+weak after ~50 epochs — safer here since the dataset includes mixed-in COCO
+examples (Section 6).
+
+**Exact parameter breakdown** (measured directly against the real
+`yolo26n.pt` checkpoint's loaded weights via `model.model.named_parameters()`,
+replicating Ultralytics' own freeze logic in `engine/trainer.py`'s
+`_setup_train` — not estimated):
+
+| | Tensors | Parameters | % of total |
+|---|---|---|---|
+| **Total** | 366 | 2,572,280 | 100% |
+| Frozen (`freeze=10`) | 99 | 1,115,744 | 43.38% |
+| Trainable (`freeze=10`) | 267 | 1,456,536 | **56.62%** |
+
+`freeze=10` does **not** freeze "the whole backbone" cleanly — Ultralytics
+freezes every parameter whose name contains `model.0.` through `model.9.`
+(plus `.dfl`, which matches no actual parameter in this model). In YOLO26n's
+layer indexing that's blocks 0–9 — the Conv/C3k2 stem through the SPPF
+layer — but **not** block 10 (`C2PSA`, the attention block that caps the
+backbone), which stays trainable along with the full neck (blocks 13, 16,
+17, 19, 20, 22) and the `Detect` head (block 23). More precise framing than
+"freeze the backbone": *freeze the convolutional backbone (blocks 0–9);
+train the backbone's attention block + full neck + detection head (blocks
+10–23)*.
+
+For comparison, same model, same method:
+
+| `freeze=` | Frozen params | Trainable params | % trainable | What trains |
+|---|---|---|---|---|
+| `None` | 0 | 2,572,280 | 100.00% | Everything |
+| `10` (planned) | 1,115,744 | 1,456,536 | 56.62% | C2PSA + neck + head |
+| `23` | 2,262,624 | 309,656 | 12.04% | `Detect` head only |
 
 ## 5. LoRA / QLoRA — researched, not used
 
@@ -90,7 +123,8 @@ here since the dataset includes mixed-in COCO examples (Section 6).
 
 LoRA's entire value proposition is cutting trainable-parameter count and
 optimizer memory for models where full fine-tuning doesn't fit in GPU memory —
-the problem it solves at 7B+ parameter LLMs. YOLO26n is 2.4M parameters; full
+the problem it solves at 7B+ parameter LLMs. YOLO26n is 2.57M parameters
+(measured directly off the loaded checkpoint — see Section 4); full
 fine-tuning already fits comfortably on a free Kaggle T4/P100. There's no
 memory problem to solve. Ultralytics also has **no built-in LoRA/PEFT support**
 — two GitHub issues asking for it
@@ -136,16 +170,61 @@ Benchmark latency in whatever environment actually serves production inference
 for this app (currently: inside the `backend` container, on CPU) — not on the
 Kaggle GPU training box.
 
-### 7.2 One fair, held-out test set (no leakage)
+### 7.2 Two held-out sets — not one, and not interchangeable
 
-- **Novel-class set**: 30–60 fresh, self-captured photos of real
-  keys/wallet/sunglasses — leak-free by construction since never in any
-  Roboflow/LVIS training split.
-- **Forgetting-check set**: a small COCO `val2017` sample (~50–100 images),
-  kept separate from the `train2017` sample used in Section 6.
-- One `data.yaml` (`nc=83`, same class order as training), reused verbatim for
-  the fine-tuned model. Never reuse the fine-tune's own training `val/` split
-  as this test set.
+Reviewed and revised: the natural instinct is "one golden dataset for
+everything," but the two checks this needs have genuinely different
+validity requirements, so they stay as two sets with different sourcing:
+
+- **Golden set (~150 images, self-captured)** — this is the one that answers
+  "which model actually works for this product," and it's the part that
+  benefits from being richer than the original 30–60-photo novel-class-only
+  plan: realistic multi-object home/office scenes (desk, bag, couch,
+  countertop), not isolated clean shots, covering **both** the 3 novel
+  classes **and** the COCO classes this app actually cares about day to day:
+
+  | Classes | Target instances |
+  |---|---|
+  | `keys`, `wallet` | ≥40 each |
+  | `sunglasses` | 40–50 (small, reflective, easily occluded — the hardest class) |
+  | `cell phone`, `backpack`, `handbag`, `person` | ~20–30 each (cheap — these naturally co-occur with the novel items in the same multi-object scenes) |
+  | True negatives / distractors | 10–15 images (e.g. a phone case that resembles a wallet, an empty sunglasses case) — specifically probes false positives, since YOLOE's open-vocabulary prompting is prone to near-match ones |
+
+  Vary lighting (daylight/lamp/dim evening), background, angle, distance, and
+  partial occlusion on purpose — don't shoot it all in one room in one
+  sitting. Capture with the same camera/resolution pipeline the app actually
+  uses in production (not a phone camera), so results transfer. Tag each
+  photo's condition (lighting/background) in the filename at capture time —
+  cheap now, expensive to reconstruct later, and it's what lets Section 7.4's
+  narrative slice results by condition instead of one flat number.
+
+  Multiple objects per photo is how ~150 images reaches these per-class
+  instance counts without needing 150 separate single-object shots.
+
+- **Forgetting-check set: a small COCO `val2017` sample (~50–100 images),
+  kept separate and untouched** — deliberately **not** merged into the golden
+  set above. This check's entire validity depends on matching COCO's own
+  photo distribution (varied photographers, scenes, scale, occlusion, no
+  single-camera/single-room correlation). Self-captured photos are an
+  inherently narrow, correlated domain — if a self-captured "backpack" photo
+  scores lower after fine-tuning, there's no way to tell real catastrophic
+  forgetting apart from the self-captured photos simply looking different
+  from COCO's. Keep this sample separate from the `train2017` sample used in
+  Section 6.
+
+One `data.yaml` (`nc=83`, same class order as training) covers the golden
+set, reused verbatim for the fine-tuned model's evaluation. Never reuse the
+fine-tune's own training `val/` split as either test set.
+
+**Realistic effort, so this doesn't become a surprise**: capturing 100–200
+photos across genuinely varied conditions takes 2–4 hours, not one sitting;
+annotating ~150 multi-object images (bounding boxes for every instance)
+runs another 3–6 hours with review. Budget roughly a weekend's worth of
+elapsed effort (6–10 hours across 1–2 sessions) for the golden set alone —
+annotate it in Roboflow's own UI (already part of this project's dataset
+sourcing in Section 3), whose model-assisted auto-labeling can pre-box the
+already-known COCO classes so manual effort concentrates on the 3 novel
+ones.
 
 ### 7.3 Running each variant
 
@@ -207,26 +286,30 @@ merged dataset, expect roughly 1–3 hours for 50–100 epochs on a single T4.
 
 ## 9. Code changes needed in this repo once this is executed
 
-Because `app/engines/vision/vision_engine.py` already resolves `YOLOVisionEngine`'s
-weights via the `YOLO_MODEL_PATH` env var (already wired through
-`docker-compose.yml`), **no changes to `vision_engine.py` itself are needed** to
-serve a fine-tuned checkpoint — `ultralytics.YOLO()` accepts a local file path
-directly, and its boxes/confidence flow through the exact same
-`_UltralyticsScanMixin.scan_frame()` code already built for the pretrained
-model. What's actually needed:
+`app/engines/vision/vision_engine.py` already resolves `YOLOVisionEngine`'s
+weights via `FINE_TUNED_YOLO_MODEL_PATH` (checked before the legacy shared
+`YOLO_MODEL_PATH`, which `YOLOEVisionEngine` also reads — use the
+fine-tuned-specific var here, **not** the shared one, since both engines can
+be resident in the same process via the live UI toggle; pointing the shared
+var at a fine-tuned checkpoint would make `YOLOEVisionEngine` try to load it
+too and silently fall back to mock detections). `ultralytics.YOLO()` accepts
+a local file path directly, and its boxes/confidence flow through the exact
+same `_UltralyticsScanMixin.scan_frame()` code already built for the
+pretrained model — no further changes to `vision_engine.py` itself are
+needed. What's actually needed:
 
 1. Host the fine-tuned `.pt` file somewhere the container can reach (Hugging
    Face Hub recommended — free, versioned, simplest). Don't commit the raw
    `.pt` via normal git.
 2. Add a build-time fetch step to `backend/Dockerfile`, mirroring the existing
    `yolo26n.pt`/`yoloe-26n-seg.pt` pre-download `RUN` steps.
-3. Point `YOLO_MODEL_PATH` at it in `docker-compose.yml`'s `backend` service —
-   zero change to application code.
+3. Point `FINE_TUNED_YOLO_MODEL_PATH` at it in `docker-compose.yml`'s
+   `backend` service — zero change to application code beyond what's
+   already there.
 
 ## Open questions
 
 1. LVIS vs. Roboflow as the primary dataset — fine to start with LVIS and fall
    back if its filtered class counts prove too sparse.
-2. How many self-captured test photos (Section 7.2) is realistic to shoot.
-3. Checkpoint hosting (Section 9) — Hugging Face Hub assumed, confirm no
+2. Checkpoint hosting (Section 9) — Hugging Face Hub assumed, confirm no
    existing team/infra preference overrides that.
