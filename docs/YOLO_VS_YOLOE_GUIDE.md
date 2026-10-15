@@ -108,8 +108,10 @@ tempting to make it the default. Don't, for two concrete reasons:
 1. **Accuracy regresses on the classes that already work.** `phone`/`backpack`
    detection would get measurably worse (YOLO26n's 40.9 mAP vs. YOLOE's ~30 mAP
    zero-shot) for no benefit, since YOLO already handles those classes well.
-2. **It's still not a substitute for fine-tuning if `keys`/`wallet`/`sunglasses`
-   need to work *reliably*** — YOLOE is the fast, zero-effort option to prototype
-   with; a properly fine-tuned model (see `FINE_TUNING_YOLO_GUIDE.md` — planning
-   only, not yet implemented) is the higher-accuracy path if YOLOE's zero-shot
-   results prove insufficient for real use, not just a demo.
+2. **It's still not a substitute for fine-tuning if the home/garage items it
+   covers need to work *reliably*** — YOLOE is the fast, zero-effort option
+   to prototype with; a properly fine-tuned model (see
+   `FINE_TUNING_YOLO_GUIDE.md` — implementation ready in `finetuning/`, not
+   yet executed) is the higher-accuracy path on a curated 48-class
+   vocabulary if YOLOE's zero-shot results prove insufficient for real use,
+   not just a demo.
