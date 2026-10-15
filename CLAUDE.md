@@ -76,10 +76,11 @@ vision-assist-v1/
 
 ```
 Vision: browser webcam → useVisionWS.js captures a 640x480 JPEG every ~100ms
-  → WS /ws/vision (raw JPEG bytes) → vision_routes.py
-  → VisionTracker.scan_frame(bytes)         # YOLO or YOLOE per VISION_MODEL_TYPE, degrades to mock on failure
-  → {"status": "success", "detections": [{label, confidence, box}, ...]}
+  → WS /ws/vision?engine=yolo|yoloe (raw JPEG bytes) → vision_routes.py
+  → get_engine(engine).scan_frame(bytes)     # cached per engine, degrades to mock on failure
+  → {"status": "success", "engine": "...", "detections": [{label, confidence, box}, ...]}
   → useVisionWS.js draws boxes on its own <canvas> — the server never renders an annotated image
+  (the header's YOLO/YOLOE toggle changes `engine` and reconnects the socket — no restart)
 
 Audio: browser mic → useAudioWS.js → WS /ws/audio (webm blob) → audio_routes.py
   → transcribe via STT_PROVIDER (faster-whisper default, or whisper/openai)
@@ -91,7 +92,8 @@ Auth: LoginModal.jsx → fetch POST /api/v1/auth/login → auth_routes.py → JW
 
 ### Key Design Patterns
 
-- **Vision engine (`app/engines/vision/vision_engine.py`)**: `BaseVisionEngine` ABC → `YOLOVisionEngine` / `YOLOEVisionEngine` (share inference via `_UltralyticsScanMixin`, only model loading differs) → `FallbackVisionEngine` mock degrade path. `VisionTracker` picks YOLO vs. YOLOE from `VISION_MODEL_TYPE` (`docker-compose.yml` wires `YOLO_MODEL_PATH`/`VISION_MODEL_TYPE`/`VISION_CUSTOM_CLASSES` through). `scan_frame(image_buffer)` returns `{"detections": [...], "annotated_frame": ...}` — `vision_routes.py` only forwards `detections`, since the client renders its own overlay.
+- **Vision engine (`app/engines/vision/vision_engine.py`)**: `BaseVisionEngine` ABC → `YOLOVisionEngine` / `YOLOEVisionEngine` (share inference via `_UltralyticsScanMixin`, only model loading differs) → `FallbackVisionEngine` mock degrade path. `get_engine(engine_type)` lazily constructs and caches one instance per type — both YOLO and YOLOE can be resident at once, so `vision_routes.py` picks per-connection via `/ws/vision`'s `?engine=` query param (falling back to `VISION_MODEL_TYPE` if omitted) without restarting anything; `docker-compose.yml` still wires `YOLO_MODEL_PATH`/`VISION_MODEL_TYPE`/`VISION_CUSTOM_CLASSES` through for the startup default. `scan_frame(image_buffer)` returns `{"detections": [...], "annotated_frame": ...}` — `vision_routes.py` only forwards `detections` (plus which `engine` served them), since the client renders its own overlay.
+- **The frontend's YOLO/YOLOE toggle (`App.jsx`'s header) drives `useVisionWS`'s `engine` param**, which is just a dependency of the effect that opens the `/ws/vision` socket — changing it is what triggers the reconnect-with-new-engine. `activeEngine` (set from each response's `engine` field) only reflects what the server actually confirmed, so the UI can show "switching…" during the gap rather than assuming the click took effect immediately.
 - **Mock/fallback detections report `box: None`** — `vision_routes.py` substitutes a fixed placeholder box before sending, since the frontend's canvas renderer destructures `box` unconditionally with no null check.
 - **Audio provider selection (`app/api/audio_routes.py`)**: `STT_PROVIDER` env var, loaded once at module level with the model left `None` on failure rather than crashing — match this functional, env-var-dispatch idiom for new engine selection logic, except where the heavier ABC pattern already exists (`engines/vision/`).
 - **CLIP + Qdrant semantic search (`app/engines/ml/vector_store.py` + `embedding_engine.py`)** and **the voice engine classes (`app/engines/voice/`)** are implemented but not yet wired into a route — `audio_routes.py` currently has its own separate inline STT dispatch instead of using `engines/voice/`.
