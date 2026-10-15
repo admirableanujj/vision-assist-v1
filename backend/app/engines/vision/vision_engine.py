@@ -1,13 +1,12 @@
-# app/vision_engine/vision_engine.py
+# app/engines/vision/vision_engine.py
 """
 YOLO Real-Time Object Tracking Pipeline
 
-Loads optimized ultralytics computer vision weights inside the container framework 
+Loads optimized ultralytics computer vision weights inside the container framework
 to scan camera inputs, detect registered belongings, and update the session status log.
 
 Usage:
-    Imported dynamically into the core framework via:
-    from vision_engine.vision_tracker import VisionTracker
+    from app.engines.vision import VisionTracker
 
 Dependencies:
     ultralytics==8.2.0
@@ -24,7 +23,7 @@ __version__ = "1.0.1"
 import os
 import random
 from .vision_base import BaseVisionEngine
-from logging_config import get_logger
+from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 

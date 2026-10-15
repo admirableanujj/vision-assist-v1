@@ -1,4 +1,4 @@
-# app/vision_engine/vision_base.py
+# app/engines/vision/vision_base.py
 from abc import ABC, abstractmethod
 
 class BaseVisionEngine(ABC):
