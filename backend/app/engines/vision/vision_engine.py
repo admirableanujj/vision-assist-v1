@@ -264,6 +264,23 @@ try:
     _selected_type = os.getenv("VISION_MODEL_TYPE", DEFAULT_VISION_MODEL_TYPE).strip().lower()
     VisionTracker = _ENGINE_TYPES.get(_selected_type, YOLOVisionEngine)
 
+    # Per-engine instance cache so callers (e.g. a per-connection engine
+    # choice over /ws/vision) can hold both YOLO and YOLOE resident at once
+    # and switch between them without a restart. Lazy: each engine is only
+    # constructed (and pays its load cost) the first time it's actually
+    # requested, not eagerly for both at import time.
+    _engine_cache: dict = {}
+
+    def get_engine(engine_type: str = None):
+        key = (engine_type or _selected_type or DEFAULT_VISION_MODEL_TYPE).strip().lower()
+        if key not in _engine_cache:
+            cls = _ENGINE_TYPES.get(key, YOLOVisionEngine)
+            _engine_cache[key] = cls()
+        return _engine_cache[key]
+
 except ImportError as e:
     logger.critical(f"Vision dependencies unavailable: {e}")
     VisionTracker = FallbackVisionEngine
+
+    def get_engine(engine_type: str = None):
+        return FallbackVisionEngine()
