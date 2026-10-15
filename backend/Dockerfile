@@ -32,10 +32,13 @@ RUN pip install -r requirements.txt
 
 # Pre-download both model checkpoints at build time instead of paying for it
 # (and, for YOLOE, triggering a live pip-install of its CLIP dependency) on
-# the first real request. Placed before COPY so this layer only reruns when
+# the first real request. Saved outside /workspace — docker-compose.yml
+# bind-mounts ./backend over /workspace for hot-reload, which would hide
+# anything baked in there. Placed before COPY so this layer only reruns when
 # requirements.txt changes, not on every source edit.
-RUN python -c "from ultralytics import YOLO; YOLO('yolo26n.pt')"
-RUN python -c "from ultralytics import YOLOE; m = YOLOE('yoloe-26n-seg.pt'); m.set_classes(['person'])"
+RUN mkdir -p /opt/weights
+RUN python -c "from ultralytics import YOLO; YOLO('/opt/weights/yolo26n.pt')"
+RUN python -c "from ultralytics import YOLOE; m = YOLOE('/opt/weights/yoloe-26n-seg.pt'); m.set_classes(['person'])"
 
 # Copy backend application source code
 COPY . /workspace/

@@ -19,11 +19,13 @@ logger = get_logger(__name__)
 # Detections below this confidence score are discarded.
 DEFAULT_CONFIDENCE_THRESHOLD = 0.5
 
-# Nano variant for CPU-only Docker inference. Override via YOLO_MODEL_PATH.
-DEFAULT_LOCAL_WEIGHTS = "yolo26n.pt"
+# Nano variant for CPU-only Docker inference. Baked into the image at
+# /opt/weights (see Dockerfile) — outside /workspace, which docker-compose's
+# dev bind-mount would otherwise hide. Override via YOLO_MODEL_PATH.
+DEFAULT_LOCAL_WEIGHTS = "/opt/weights/yolo26n.pt"
 
 # Open-vocabulary variant — see YOLO_VS_YOLOE_GUIDE.md for when to use it.
-DEFAULT_YOLOE_WEIGHTS = "yoloe-26n-seg.pt"
+DEFAULT_YOLOE_WEIGHTS = "/opt/weights/yoloe-26n-seg.pt"
 
 # Standard 80-class MS-COCO label set. Passed to YOLOE's set_classes() so it
 # detects at least as much as YOLOVisionEngine does — an open-vocabulary model
