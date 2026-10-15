@@ -37,7 +37,10 @@ takes a Kaggle session and real GPU time.
 
 Neither is built by any script here — both need a human:
 
-- **Golden set** (~150 images, self-captured, nc=83): photograph keys/wallet/sunglasses plus `cell phone`/`backpack`/`handbag`/`person` in realistic multi-object scenes, per the per-class instance-count table in Guide Section 7.2. Annotate in Roboflow's UI (model-assisted auto-labeling pre-boxes the known COCO classes), export as a standard YOLO-format dataset with a `golden.yaml`.
+- **Golden set** (~150 images, self-captured): photograph keys/wallet/sunglasses plus `cell phone`/`backpack`/`handbag`/`person` in realistic multi-object scenes, per the per-class instance-count table in Guide Section 7.2. Annotate once in Roboflow's UI (model-assisted auto-labeling pre-boxes the known COCO classes), then export the **same images three times** with different class filters — each model only has output neurons for its own classes, so scoring it against a mismatched label space either crashes or produces a meaningless mAP (Guide Section 7.3):
+  - `golden_83class.yaml` — all 83 classes, for the fine-tuned model
+  - `golden_80class.yaml` — the 80 COCO classes only, keys/wallet/sunglasses boxes dropped, for base YOLO
+  - `golden_3class.yaml` — keys/wallet/sunglasses only, **remapped to class indices 0/1/2** (not 80/81/82) to match what `set_classes()` assigns internally, for YOLOE
 - **Forgetting-check set** (~50-100 images, nc=80): a random sample from COCO's own `val2017` — **not** from the golden set, and not from the `train2017` sample folded into training. Export its own `coco_sample.yaml`.
 
 Upload both as Kaggle Datasets so `evaluate.py` can read them from the training notebook's environment (or run `evaluate.py` locally against downloaded copies — it only needs `ultralytics` and `pyyaml`).
@@ -65,7 +68,9 @@ python evaluate.py \
     --base-weights yolo26n.pt \
     --yoloe-weights yoloe-26n-seg.pt \
     --finetuned-weights best.pt \
-    --golden-set-yaml golden_set/golden.yaml \
+    --golden-set-yaml golden_set/golden_83class.yaml \
+    --golden-set-base-yaml golden_set/golden_80class.yaml \
+    --golden-set-yoloe-yaml golden_set/golden_3class.yaml \
     --coco-sample-yaml coco_sample/coco_sample.yaml \
     --output results.json
 ```

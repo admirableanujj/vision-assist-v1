@@ -220,9 +220,11 @@ validity requirements, so they stay as two sets with different sourcing:
   from COCO's. Keep this sample separate from the `train2017` sample used in
   Section 6.
 
-One `data.yaml` (`nc=83`, same class order as training) covers the golden
-set, reused verbatim for the fine-tuned model's evaluation. Never reuse the
-fine-tune's own training `val/` split as either test set.
+The golden set's images get exported as **three** class-restricted
+`data.yaml` variants (Section 7.3) — one per model's own label space — not
+one `data.yaml` reused across all three; reusing the full `nc=83` yaml for
+the base/YOLOE models either errors or silently misaligns (see 7.3). Never
+reuse the fine-tune's own training `val/` split as any of these test sets.
 
 **Realistic effort, so this doesn't become a surprise**: capturing 100–200
 photos across genuinely varied conditions takes 2–4 hours, not one sitting;
@@ -259,6 +261,12 @@ yoloe = YOLOE("yoloe-26n-seg.pt")
 yoloe.set_classes(["keys", "wallet", "sunglasses"])
 yoloe_metrics = yoloe.val(data="test_set/three_class_only.yaml", split="test", imgsz=640)
 ```
+
+`finetuning/evaluate.py` implements exactly this split (`--golden-set-yaml`,
+`--golden-set-base-yaml`, `--golden-set-yoloe-yaml` for the three variants
+above, plus `--coco-sample-yaml` for the Section 7.2 forgetting check) —
+see `finetuning/README.md` for how to export the three variants from one
+Roboflow annotation project.
 
 ```python
 # Identical latency harness for all three

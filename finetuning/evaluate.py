@@ -2,24 +2,38 @@
 Three-way comparison: base YOLO26n vs. YOLOE zero-shot vs. fine-tuned YOLO26n.
 Implements docs/FINE_TUNING_YOLO_GUIDE.md Section 7.3/7.4.
 
-Needs two held-out sets already prepared as separate directories (see
-finetuning/README.md for how to build them):
-  --golden-set-yaml   the ~150-image self-captured set (nc=83, same class
-                       order as training) — answers "which model actually
-                       works for this product"
-  --coco-sample-yaml  the untouched COCO val2017 sample (nc=80) — answers
-                       "did fine-tuning regress the original classes"
+Needs the SAME golden-set images exported as three class-restricted
+data.yaml variants, plus the untouched COCO val2017 sample — none of which
+this script or prepare_dataset.py produces; all four require a human to
+annotate/export (see finetuning/README.md):
+  --golden-set-yaml       full 83-class labels — scores the fine-tuned model
+  --golden-set-base-yaml  same images, labels filtered to the 80 COCO
+                           classes only (nc=80) — scores base YOLO, which
+                           has no output neurons for keys/wallet/sunglasses
+                           and would otherwise crash or go out of bounds
+                           scoring against an nc=83 dataset
+  --golden-set-yoloe-yaml same images, labels filtered to keys/wallet/
+                           sunglasses only and remapped to 0/1/2 (nc=3) —
+                           matches set_classes()'s own output index order,
+                           which is NOT 80/81/82
+  --coco-sample-yaml      untouched COCO val2017 sample (nc=80) — answers
+                           "did fine-tuning regress the original classes"
 
-Neither set is produced by this script or by prepare_dataset.py — both
-require a human to actually capture/annotate (golden set) or sample from an
-already-downloaded COCO val2017 (forgetting-check set).
+Each model is scored only against the data.yaml matching its own class
+space — reusing the full 83-class yaml across all three (an earlier version
+of this script did this) either raises an IndexError in Ultralytics'
+confusion-matrix sizing (base YOLO, nc=80) or silently produces meaningless
+near-zero mAP from index-mismatched TP matching (YOLOE, whose set_classes()
+output indices are 0/1/2, not 80/81/82).
 
 Usage:
     python evaluate.py \\
         --base-weights yolo26n.pt \\
         --yoloe-weights yoloe-26n-seg.pt \\
         --finetuned-weights runs/lostfound_yolo26n/weights/best.pt \\
-        --golden-set-yaml golden_set/golden.yaml \\
+        --golden-set-yaml golden_set/golden_83class.yaml \\
+        --golden-set-base-yaml golden_set/golden_80class.yaml \\
+        --golden-set-yoloe-yaml golden_set/golden_3class.yaml \\
         --coco-sample-yaml coco_sample/coco_sample.yaml \\
         --output results.json
 """
@@ -49,14 +63,17 @@ def benchmark_latency(model, frame, conf=0.5, warmup=5, runs=30):
     }
 
 
-def eval_base_yolo(weights_path, golden_set_yaml, sample_frame):
-    """Base YOLO26n: scored only on the golden set's 80 COCO classes it
-    already knows. keys/wallet/sunglasses are reported N/A — structural,
-    not a measured 0, since the model has no output neurons for them."""
+def eval_base_yolo(weights_path, golden_set_base_yaml, sample_frame):
+    """Base YOLO26n: scored on the golden-set images via an nc=80
+    class-restricted yaml (the model has no output neurons for
+    keys/wallet/sunglasses — scoring it against the full nc=83 yaml sizes
+    Ultralytics' confusion matrix at 80 and raises IndexError the moment a
+    ground-truth box at class 80/81/82 is encountered). keys/wallet/
+    sunglasses are reported N/A — structural, not a measured 0."""
     from ultralytics import YOLO
 
     model = YOLO(weights_path)
-    metrics = model.val(data=golden_set_yaml, split="val", imgsz=640)
+    metrics = model.val(data=golden_set_base_yaml, split="val", imgsz=640)
     return {
         "model": "base_yolo26n",
         "map50_overall": metrics.box.map50,
@@ -66,15 +83,18 @@ def eval_base_yolo(weights_path, golden_set_yaml, sample_frame):
     }
 
 
-def eval_yoloe(weights_path, golden_set_yaml, sample_frame):
-    """YOLOE zero-shot: prompted with only the 3 novel classes, per
-    FINE_TUNING_YOLO_GUIDE.md Section 7.3 — its own class-only data.yaml,
-    not the full 83-class one, since it wasn't prompted with the other 80."""
+def eval_yoloe(weights_path, golden_set_yoloe_yaml, sample_frame):
+    """YOLOE zero-shot: prompted with only the 3 novel classes via
+    set_classes(), which assigns them output indices 0/1/2 — NOT 80/81/82.
+    Must be scored against an nc=3 yaml whose labels are remapped to match
+    those same 0/1/2 indices, or TP matching never lines up with the
+    (differently-indexed) ground truth and reported mAP is a meaningless
+    near-zero rather than a real zero-shot measurement."""
     from ultralytics import YOLOE
 
     model = YOLOE(weights_path)
     model.set_classes(NOVEL_CLASSES)
-    metrics = model.val(data=golden_set_yaml, split="val", imgsz=640)
+    metrics = model.val(data=golden_set_yoloe_yaml, split="val", imgsz=640)
     return {
         "model": "yoloe_zero_shot",
         "map50_overall": metrics.box.map50,
@@ -115,13 +135,15 @@ def main():
     parser.add_argument("--base-weights", required=True)
     parser.add_argument("--yoloe-weights", required=True)
     parser.add_argument("--finetuned-weights", required=True)
-    parser.add_argument("--golden-set-yaml", required=True, type=Path)
+    parser.add_argument("--golden-set-yaml", required=True, type=Path, help="nc=83, scores the fine-tuned model")
+    parser.add_argument("--golden-set-base-yaml", required=True, type=Path, help="Same images, nc=80, scores base YOLO")
+    parser.add_argument("--golden-set-yoloe-yaml", required=True, type=Path, help="Same images, nc=3 (keys/wallet/sunglasses remapped to 0/1/2), scores YOLOE")
     parser.add_argument("--coco-sample-yaml", required=True, type=Path)
     parser.add_argument("--sample-frame", type=Path, default=None, help="One representative image for latency benchmarking; defaults to the first image in the golden set")
     parser.add_argument("--output", type=Path, default=Path("results.json"))
     args = parser.parse_args()
 
-    for yaml_path in (args.golden_set_yaml, args.coco_sample_yaml):
+    for yaml_path in (args.golden_set_yaml, args.golden_set_base_yaml, args.golden_set_yoloe_yaml, args.coco_sample_yaml):
         if not yaml_path.exists():
             raise SystemExit(
                 f"{yaml_path} not found. This script doesn't build the held-out sets — "
@@ -131,8 +153,8 @@ def main():
     sample_frame = str(args.sample_frame) if args.sample_frame else _first_image_in_yaml(args.golden_set_yaml)
 
     results = {
-        "base_yolo26n": eval_base_yolo(args.base_weights, str(args.golden_set_yaml), sample_frame),
-        "yoloe_zero_shot": eval_yoloe(args.yoloe_weights, str(args.golden_set_yaml), sample_frame),
+        "base_yolo26n": eval_base_yolo(args.base_weights, str(args.golden_set_base_yaml), sample_frame),
+        "yoloe_zero_shot": eval_yoloe(args.yoloe_weights, str(args.golden_set_yoloe_yaml), sample_frame),
         "finetuned_yolo26n": eval_finetuned(
             args.finetuned_weights, str(args.golden_set_yaml), str(args.coco_sample_yaml), sample_frame
         ),

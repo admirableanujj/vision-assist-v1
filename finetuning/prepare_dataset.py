@@ -106,13 +106,20 @@ def copy_lvis_subset(lvis_root: Path, candidates: dict, out_images: Path, out_la
     """Copies each candidate's image + its filtered/remapped label into
     out_images/{train,val} and out_labels/{train,val}, assigning the split
     fresh here rather than trusting LVIS's own split (see
-    FINE_TUNING_YOLO_GUIDE.md Section 3's "re-split after merging" guidance)."""
+    FINE_TUNING_YOLO_GUIDE.md Section 3's "re-split after merging" guidance).
+
+    Returns (counts, copied_stems) — copied_stems lets the caller exclude
+    these same images from the separate COCO fold-in sample, since LVIS
+    reuses COCO's own train2017/val2017 JPEGs verbatim and a stem drawn by
+    both would otherwise have its remapped 80/81/82 label silently
+    overwritten by the plain COCO one."""
     items = list(candidates.items())
     rng.shuffle(items)
     n_val = max(1, int(len(items) * val_fraction))
     splits = {"val": items[:n_val], "train": items[n_val:]}
 
     counts = {"train": 0, "val": 0}
+    copied_stems = set()
     for split, split_items in splits.items():
         for label_path, lines in split_items:
             # LVIS label paths mirror image paths one-for-one, just under
@@ -130,17 +137,24 @@ def copy_lvis_subset(lvis_root: Path, candidates: dict, out_images: Path, out_la
             shutil.copy2(image_path, dest_image)
             dest_label.write_text("\n".join(lines) + "\n")
             counts[split] += 1
-    return counts
+            copied_stems.add(image_path.stem)
+    return counts, copied_stems
 
 
-def sample_coco_fold_in(coco_root: Path, sample_size: int, out_images: Path, out_labels: Path, val_fraction: float, rng: random.Random):
+def sample_coco_fold_in(coco_root: Path, sample_size: int, out_images: Path, out_labels: Path, val_fraction: float, rng: random.Random, exclude_stems: set[str]):
     """Copies a random sample of COCO train2017 images (original 0-79 labels,
     untouched) into the merged dataset — the catastrophic-forgetting
     mitigation from Section 6. COCO's own labels already use the exact
     0-79 class scheme this project's classes 0-79 are defined to match, so
-    no remapping is needed here, only copying + a fresh train/val split."""
+    no remapping is needed here, only copying + a fresh train/val split.
+
+    LVIS reuses COCO's own train2017/val2017 JPEGs verbatim, so an image
+    already copied by copy_lvis_subset() (with its remapped 80/81/82 label)
+    can also be drawn here — exclude_stems (the LVIS subset's image stems)
+    is checked to avoid silently overwriting that remapped label with the
+    original COCO-only one and losing the key/wallet/sunglasses annotation."""
     coco_labels_dir = coco_root / "labels" / "train2017"
-    all_labels = sorted(coco_labels_dir.glob("*.txt"))
+    all_labels = [p for p in sorted(coco_labels_dir.glob("*.txt")) if p.stem not in exclude_stems]
     if not all_labels:
         print(f"[WARN] No COCO labels found under {coco_labels_dir} — skipping COCO fold-in.")
         return {"train": 0, "val": 0}
@@ -202,10 +216,10 @@ def main():
             "already converted from LVIS's native COCO-JSON annotations)."
         )
 
-    lvis_counts = copy_lvis_subset(args.lvis_root, candidates, out_images, out_labels, args.val_fraction, rng)
+    lvis_counts, lvis_stems = copy_lvis_subset(args.lvis_root, candidates, out_images, out_labels, args.val_fraction, rng)
     print(f"Copied LVIS subset: {lvis_counts}")
 
-    coco_counts = sample_coco_fold_in(args.coco_root, args.coco_sample_size, out_images, out_labels, args.val_fraction, rng)
+    coco_counts = sample_coco_fold_in(args.coco_root, args.coco_sample_size, out_images, out_labels, args.val_fraction, rng, exclude_stems=lvis_stems)
     print(f"Copied COCO fold-in sample: {coco_counts}")
 
     write_data_yaml(args.output_dir)
