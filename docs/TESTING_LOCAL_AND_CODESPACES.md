@@ -86,12 +86,12 @@ setup, understanding what the quick start does, or switching to YOLOE).
 
 ## Before you start: the DB migration workaround
 
-`precheck_db.py`'s migrations currently fail on a fresh database (see
-`GAP_ANALYSIS.md` §3.1 — a bad `VECTOR` column type with no pgvector
-extension, among other issues) and the failure is swallowed, so the backend
-boots as if nothing went wrong. **Without this workaround, login — and so the
-full browser flow — will fail with "relation does not exist."** The direct
-WebSocket check below doesn't need this at all, since it never touches auth.
+`precheck_db.py`'s migrations currently fail on a fresh database (a `VECTOR`
+column type with no pgvector extension installed, among other issues), and
+the failure is swallowed, so the backend boots as if nothing went wrong.
+**Without this workaround, login — and so the full browser flow — will fail
+with "relation does not exist."** The direct WebSocket check below doesn't
+need this at all, since it never touches auth.
 
 Once `postgres` is up (see setup below), create just enough schema by hand:
 
@@ -160,7 +160,7 @@ docker exec vision_assist_db psql -U postgres -d vision_assist \
 ```
 
 You can now log in with `test_user` / `test_user`. This is a workaround, not
-a fix — the real fix belongs in `precheck_db.py` (see `GAP_ANALYSIS.md`).
+a fix — the real fix belongs in `precheck_db.py`.
 
 ## Local (Docker)
 
