@@ -4,9 +4,12 @@ import { useAudioWS } from './hooks/useAudioWS';
 import { Camera, Mic, Activity, HardDrive, Cpu, LogOut, Flame, Sparkles } from 'lucide-react';
 import LoginModal from './components/LoginModal';
 
+const ENGINE_OPTIONS = ['yolo', 'yoloe'];
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [engineChoice, setEngineChoice] = useState('yolo');
 
   // Check for stored JWT token on mount
   useEffect(() => {
@@ -24,8 +27,10 @@ export default function App() {
     }
   }, []);
 
-  // Hook handles webcam stream, websocket communication, and canvas bounding box rendering automatically when authenticated
-  const { videoRef, canvasRef, wsConnected, detections } = useVisionWS(Boolean(user));
+  // Hook handles webcam stream, websocket communication, and canvas bounding box rendering automatically when authenticated.
+  // engineChoice drives which engine the backend uses — changing it reconnects
+  // the socket with a new ?engine=, no backend restart.
+  const { videoRef, canvasRef, wsConnected, detections, activeEngine } = useVisionWS(Boolean(user), engineChoice);
   const {isListening, transcript, genieResponse, audioWsConnected, startListening, stopListening} = useAudioWS();
 
   // Handle Login Success
@@ -83,7 +88,26 @@ export default function App() {
         </div>
         <div className="flex items-center gap-6 text-xs">
           <div className="flex items-center gap-4 text-slate-400">
-            <span className="flex items-center gap-1.5"><Cpu className="w-4 h-4" /> YOLO Engine</span>
+            <div className="flex items-center gap-1.5">
+              <Cpu className="w-4 h-4" />
+              <div className="flex items-center gap-0.5 bg-slate-800 rounded-full p-0.5">
+                {ENGINE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt}
+                    onClick={() => setEngineChoice(opt)}
+                    title={opt === 'yoloe' ? 'Open-vocabulary, broader classes, lower accuracy' : 'Fixed 80 COCO classes, most accurate'}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide transition ${
+                      engineChoice === opt
+                        ? 'bg-emerald-600 text-white'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+              {!activeEngine && <span className="text-amber-400 text-[10px] italic">switching…</span>}
+            </div>
             <span className="flex items-center gap-1.5"><HardDrive className="w-4 h-4" /> Ollama Local</span>
             <span className={`w-2.5 h-2.5 rounded-full ${wsConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
           </div>
