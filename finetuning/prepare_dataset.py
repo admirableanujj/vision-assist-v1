@@ -177,12 +177,15 @@ def _find_image(dataset_root: Path, images_subdir: Path, stem: str) -> Path | No
 
 
 def find_candidates(labels_dir: Path, images_root: Path, id_map: dict[int, int]) -> dict[str, dict]:
-    """Scans every label file under labels_dir (recursively — for LVIS this
-    covers both train2017/ and val2017/ subfolders in one call; for COCO,
-    callers scope labels_dir to train2017/ only, since val2017 must stay
-    untouched for the Section 6 forgetting-check set). images_root must
-    mirror labels_dir's own subdirectory depth exactly — each label's image
-    is located at images_root / <label's path relative to labels_dir>'s
+    """Scans every label file under labels_dir, recursively. Callers MUST
+    scope labels_dir to a single split (train2017/ only) for both LVIS and
+    COCO — val2017 must stay untouched by training, reserved for
+    prepare_coco_forgetting_check.py's "untouched" eval set. Since LVIS
+    reuses COCO's own JPEGs verbatim, scanning LVIS's val2017 here too
+    would leak those same images into both the training set and the
+    supposedly-untouched forgetting-check sample. images_root must mirror
+    labels_dir's own subdirectory depth exactly — each label's image is
+    located at images_root / <label's path relative to labels_dir>'s
     parent, so the two roots have to line up one-for-one.
 
     Returns {stem: {"lines": [...], "image_path": Path}} only for images
@@ -274,8 +277,17 @@ def main():
         (out_images / split).mkdir(parents=True, exist_ok=True)
         (out_labels / split).mkdir(parents=True, exist_ok=True)
 
-    print(f"Scanning LVIS labels for the {len(NOVEL_CLASSES)} novel classes...")
-    lvis_candidates = find_candidates(args.lvis_root / "labels", args.lvis_root / "images", LVIS_TO_LOSTFOUND)
+    print(f"Scanning LVIS train2017 labels for the {len(NOVEL_CLASSES)} novel classes...")
+    # Scoped to train2017 only, same as the COCO call below — NOT the whole
+    # labels/ tree. LVIS reuses COCO's own train2017/val2017 JPEGs verbatim,
+    # and prepare_coco_forgetting_check.py separately draws its "untouched"
+    # forgetting-check sample from COCO's val2017. Scanning LVIS's val2017
+    # here too would let an image containing both a novel class (pulled in
+    # via LVIS) and a kept class (pulled in via the forgetting-check script)
+    # leak into both the training set and the "untouched" eval set at once —
+    # exactly the overlap this script already handles for train2017 via
+    # merge_and_sample(), but silently unguarded for val2017.
+    lvis_candidates = find_candidates(args.lvis_root / "labels" / "train2017", args.lvis_root / "images" / "train2017", LVIS_TO_LOSTFOUND)
     print(f"Found {len(lvis_candidates)} LVIS images containing at least one novel class.")
     if not lvis_candidates:
         raise SystemExit(

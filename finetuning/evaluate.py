@@ -129,8 +129,15 @@ def eval_finetuned(weights_path, golden_set_yaml, coco_sample_yaml, sample_frame
     model = YOLO(weights_path)
 
     golden_metrics = model.val(data=golden_set_yaml, split="val", imgsz=640)
+    # Ultralytics' Metric.maps fills every class with the OVERALL mAP by
+    # default, then overwrites just the classes that actually had
+    # ground-truth instances with their real per-class AP (ap_class_index).
+    # A novel class with zero instances in the golden set (realistic for
+    # the rarer ones per Guide Section 7.2) would otherwise silently report
+    # the overall mAP here instead of "not tested" — report None instead.
+    tested_classes = set(golden_metrics.box.ap_class_index)
     novel_maps = {
-        cls: golden_metrics.box.maps[idx]
+        cls: (golden_metrics.box.maps[idx] if idx in tested_classes else None)
         for cls, idx in zip(NOVEL_CLASSES, NOVEL_CLASS_INDICES)
     }
 
