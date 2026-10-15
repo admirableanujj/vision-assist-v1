@@ -222,10 +222,22 @@ try:
 
     class YOLOVisionEngine(_UltralyticsScanMixin, BaseVisionEngine):
         def __init__(self, weights_path=None, confidence_threshold=DEFAULT_CONFIDENCE_THRESHOLD):
-            # `or` (not os.getenv's default arg) so an empty-string env var —
-            # what Compose passes when YOLO_MODEL_PATH is unset — doesn't win
-            # over DEFAULT_LOCAL_WEIGHTS.
-            self.weights_path = weights_path or os.getenv("YOLO_MODEL_PATH") or DEFAULT_LOCAL_WEIGHTS
+            # FINE_TUNED_YOLO_MODEL_PATH takes priority over the shared
+            # YOLO_MODEL_PATH (kept for back-compat) specifically so pointing
+            # a fine-tuned checkpoint at YOLOVisionEngine can never also get
+            # picked up by YOLOEVisionEngine below — both engines can be
+            # resident in the same process (get_engine() caches each), and a
+            # plain-YOLO checkpoint loaded through the YOLOE class fails
+            # outright (wrong architecture), silently degrading YOLOE to mock
+            # detections. `or` (not os.getenv's default arg) so an
+            # empty-string env var — what Compose passes when unset — never
+            # wins over the real default.
+            self.weights_path = (
+                weights_path
+                or os.getenv("FINE_TUNED_YOLO_MODEL_PATH")
+                or os.getenv("YOLO_MODEL_PATH")
+                or DEFAULT_LOCAL_WEIGHTS
+            )
             self.confidence_threshold = confidence_threshold
             self._fallback = FallbackVisionEngine()
             try:
@@ -244,6 +256,8 @@ try:
         fallback behavior as YOLOVisionEngine; only model loading differs.
         """
         def __init__(self, weights_path=None, confidence_threshold=DEFAULT_CONFIDENCE_THRESHOLD, classes=None):
+            # Deliberately does NOT read FINE_TUNED_YOLO_MODEL_PATH — that
+            # var is YOLOVisionEngine-only, by design (see its comment).
             # Same empty-string guard as YOLOVisionEngine.
             self.weights_path = weights_path or os.getenv("YOLO_MODEL_PATH") or DEFAULT_YOLOE_WEIGHTS
             self.confidence_threshold = confidence_threshold

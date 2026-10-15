@@ -44,12 +44,13 @@ The UI toggle always starts from whatever `VISION_MODEL_TYPE` resolved to at
 backend boot. This still matters for the container's initial state, and for
 anything outside the running app (scripts, `VisionTracker`, tests) that
 doesn't go through `/ws/vision?engine=`. **`docker-compose.yml`'s `backend`
-service already wires all three vars through**:
+service already wires all four vars through**:
 
 | Var | Applies to | Default | Purpose |
 |---|---|---|---|
 | `VISION_MODEL_TYPE` | Both | `yolo` | `yolo` or `yoloe` — which engine backs `VisionTracker` |
-| `YOLO_MODEL_PATH` | Both | `yolo26n.pt` (YOLO) / `yoloe-26n-seg.pt` (YOLOE) | Weights file — same var name for both, interpreted per whichever engine is active |
+| `FINE_TUNED_YOLO_MODEL_PATH` | **YOLO only** | unset | Weights file for `YOLOVisionEngine` specifically — use this, not `YOLO_MODEL_PATH`, when pointing at a fine-tuned checkpoint, since both engines can be resident at once and `YOLO_MODEL_PATH` is read by both |
+| `YOLO_MODEL_PATH` | Both (legacy) | `yolo26n.pt` (YOLO) / `yoloe-26n-seg.pt` (YOLOE) | Still read by both for back-compat — avoid setting this if you only want to override YOLO's weights, since YOLOE would pick up the same value |
 | `VISION_CUSTOM_CLASSES` | YOLOE only | 80 COCO classes + ~250 curated home items (~297 total) | Comma-separated class names passed to `set_classes()` — **replaces** the default entirely, doesn't add to it |
 
 ```bash
