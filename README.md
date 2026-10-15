@@ -38,7 +38,8 @@ mkdir -p secrets
 printf '%s' 'devpassword123' > secrets/postgres_password.txt
 printf '%s' 'unused-for-now' > secrets/qdrant_api_key.txt
 
-docker-compose up -d --build
+# --no-deps skips ollama/qdrant — add them back if you need the voice/LLM path
+docker-compose up -d --build --no-deps backend postgres frontend
 ```
 
 Then open `http://localhost:3000`. For a verified setup walkthrough — local

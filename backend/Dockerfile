@@ -19,10 +19,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
+# CPU-only torch/torchvision first — ultralytics and sentence-transformers
+# both pull torch transitively, and without this, pip resolves the default
+# PyPI wheel (bundles full CUDA/cuDNN, hundreds of MB to ~1GB larger) even
+# though this container never has a GPU.
+RUN pip install --upgrade pip && \
+    pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
 # Copy requirements and install Python packages
 COPY requirements.txt .
-RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+RUN pip install -r requirements.txt
 
 # Pre-download both model checkpoints at build time instead of paying for it
 # (and, for YOLOE, triggering a live pip-install of its CLIP dependency) on
