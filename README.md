@@ -1,10 +1,9 @@
 # Vision Assist
 
 An AI-powered voice+vision Lost & Found assistant — FastAPI backend, React/Vite
-frontend, communicating over REST + WebSockets. This is a rewrite of an earlier
-Streamlit prototype (`vision-assist`); the rewrite is **mid-migration, not
-finished** — see [Current Status](#current-status) before assuming anything
-below is fully wired.
+frontend, communicating over REST + WebSockets. **Under active development,
+not finished** — see [Current Status](#current-status) before assuming
+anything below is fully wired.
 
 ```
 +-----------------------------------------------------------------------------------+
@@ -64,12 +63,11 @@ that class gap with a real fine-tuned model instead of zero-shot detection.
 
 ## Current Status
 
-This repo's file tree and endpoint set don't yet match what an earlier version
-of this README described — several files are empty stubs, one route file is
-dead code, and the database migration script has real bugs. **`CLAUDE.md`**
-documents the verified, actual structure (not the aspirational one), and
+Several files described in the project structure below are empty stubs, one
+route file is dead code, and the database migration script has real bugs.
+**`CLAUDE.md`** documents the verified, actual structure, and
 **`docs/GAP_ANALYSIS.md`** is a full written audit of what's broken, missing,
-or ported-but-unwired, with a suggested priority order for fixing it.
+or implemented-but-unwired, with a suggested priority order for fixing it.
 
 ### Known Issues (see `docs/GAP_ANALYSIS.md` for full detail)
 
@@ -79,8 +77,8 @@ or ported-but-unwired, with a suggested priority order for fixing it.
    except. A fresh deploy ends up with zero tables; every login then fails.
    `docs/TESTING_LOCAL_AND_CODESPACES.md` includes a manual workaround.
 2. **No `/register` endpoint** despite being planned — only `/login` exists.
-3. **CLIP + Qdrant semantic search and the voice engine classes are ported
-   from the old repo but not wired into any route** (dependencies and Docker
+3. **CLIP + Qdrant semantic search and the voice engine classes are
+   implemented but not wired into any route** (dependencies and Docker
    services are provisioned; nothing calls them yet).
 4. Several files are 0-byte stubs: `app/core/config.py`, `app/core/database.py`,
    `app/models/db_models.py`, `app/services/user_service.py`,
@@ -93,7 +91,7 @@ or ported-but-unwired, with a suggested priority order for fixing it.
 vision-assist-v1/
 ├── docker-compose.yml
 ├── .env.example
-├── CLAUDE.md                     <-- verified actual architecture, read this over this file's old claims
+├── CLAUDE.md                     <-- verified actual architecture
 ├── docs/
 │   ├── GAP_ANALYSIS.md           <-- full audit: what's broken, missing, or unwired
 │   ├── YOLO_VS_YOLOE_GUIDE.md
@@ -119,10 +117,10 @@ vision-assist-v1/
 │       │   ├── database.py       <-- empty; auth_routes.py/precheck_db.py each roll their own connection
 │       │   ├── security.py       <-- JWT + password verification
 │       │   └── logging_config.py
-│       ├── engines/               <-- ported from the old repo's top-level ml/voice/vision_engine
+│       ├── engines/               <-- vision, voice, and ML/LLM engines
 │       │   ├── vision/            <-- YOLOVisionEngine + YOLOEVisionEngine + fallback — wired
-│       │   ├── voice/              <-- ported, not wired (audio_routes.py has its own STT logic)
-│       │   └── ml/                 <-- OllamaMLEngine + QueryClassifier (wired); embedding/vector_store (ported, not wired)
+│       │   ├── voice/              <-- not wired (audio_routes.py has its own STT logic)
+│       │   └── ml/                 <-- OllamaMLEngine + QueryClassifier (wired); embedding/vector_store (implemented, not wired)
 │       ├── services/              <-- empty except __init__.py
 │       └── models/
 │           ├── db_models.py       <-- empty

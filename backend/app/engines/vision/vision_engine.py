@@ -1,21 +1,10 @@
 # app/engines/vision/vision_engine.py
 """
-YOLO Real-Time Object Tracking Pipeline
-
-Loads optimized ultralytics computer vision weights inside the container framework
-to scan camera inputs, detect registered belongings, and update the session status log.
+YOLO / YOLOE object detection engine.
 
 Usage:
     from app.engines.vision import VisionTracker
-
-Dependencies:
-    ultralytics==8.2.0
-    torch
-    
-__original_author__ = "Anujj Saxena"
-__license__ = "MIT"      
 """
-__author__ = "Anujj Saxena"
 __license__ = "MIT"
 __version__ = "1.0.1"
 
@@ -27,29 +16,18 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Detections below this confidence score are discarded ("eliminate outlying" detections).
+# Detections below this confidence score are discarded.
 DEFAULT_CONFIDENCE_THRESHOLD = 0.5
 
-# Local default: smallest/fastest variant for CPU-only Docker inference.
-# YOLO26n over YOLO11n: fewer params (2.4M vs 2.6M), higher mAP (40.9 vs 39.5),
-# and ~30% faster CPU inference (38.9ms vs 56.1ms) at the same size class — see
-# the Milestone 4 model-selection writeup for the full comparison. Override
-# per-environment via YOLO_MODEL_PATH (e.g. a larger GPU-appropriate weights
-# file in a cloud deployment) without touching this code.
+# Nano variant for CPU-only Docker inference. Override via YOLO_MODEL_PATH.
 DEFAULT_LOCAL_WEIGHTS = "yolo26n.pt"
 
-# YOLOE: Ultralytics' open-vocabulary variant. Detects arbitrary text-prompted
-# classes (e.g. "keys"/"wallet"/"sunglasses", none of which are COCO classes
-# YOLOVisionEngine can ever learn without fine-tuning) at the cost of lower
-# per-class accuracy than a closed-set model — see YOLO_VS_YOLOE_GUIDE.md.
+# Open-vocabulary variant — see YOLO_VS_YOLOE_GUIDE.md for when to use it.
 DEFAULT_YOLOE_WEIGHTS = "yoloe-26n-seg.pt"
 
-# Standard 80-class MS-COCO label set, in the same order every COCO-pretrained
-# YOLO checkpoint uses. Passed to YOLOE's set_classes() so it detects at least
-# as much as YOLOVisionEngine does (person, cell phone, backpack, ...) — an
-# open-vocabulary model only ever detects classes it was explicitly told about,
-# so leaving this out (as an earlier version of this file did) means it can
-# structurally never see a person in frame, no matter how confident it'd be.
+# Standard 80-class MS-COCO label set. Passed to YOLOE's set_classes() so it
+# detects at least as much as YOLOVisionEngine does — an open-vocabulary model
+# only ever detects classes it was explicitly told about.
 COCO_80_CLASSES = [
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
     "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench",
@@ -65,19 +43,9 @@ COCO_80_CLASSES = [
     "hair drier", "toothbrush",
 ]
 
-# Curated "things found in a home" vocabulary — kitchen, living room, bedroom,
-# bathroom, and workspace items. Sourced from the RAM++ tag list (Recognize
-# Anything Model Plus, 4,585 classes — the same vocabulary YOLOE's "prompt-free"
-# checkpoints ship with internally), filtered down to physical objects plausibly
-# found indoors at home. Every entry was verified present in that source list
-# except a handful of genuine gaps (kettle, mop, bucket, doorbell, flashlight,
-# wallet — none of which RAM++ includes at all) added manually. Deliberately
-# excludes RAM++'s wild animals, vehicles, outdoor scenery, buildings,
-# professions, and abstract/verb tags (e.g. "aerobics", "action film") — those
-# aren't home objects and would only dilute confidence across more candidates
-# for no benefit. See YOLO_VS_YOLOE_GUIDE.md for the accuracy tradeoff of a
-# larger class list, and FINE_TUNING_YOLO_GUIDE.md for why RAM++ was chosen as
-# the source rather than hand-brainstorming a list from scratch.
+# Curated home-item vocabulary, filtered from the RAM++ tag list down to
+# physical objects plausible indoors; a handful of gaps RAM++ doesn't cover
+# (kettle, mop, bucket, doorbell, flashlight, wallet) added manually.
 HOME_ITEM_CLASSES = [
     "air conditioner", "alarm clock", "apple", "apron", "armchair", "armoire", "backpack",
     "baking sheet", "banana", "bath", "bath towel", "bathroom cabinet", "bathroom mirror",
@@ -117,10 +85,7 @@ HOME_ITEM_CLASSES = [
     "wine glass", "wok",
 ]
 
-# Classes YOLOEVisionEngine is prompted to detect by default: every COCO class
-# (parity with YOLOVisionEngine) plus the curated home-item vocabulary above —
-# a genuinely broad "whatever's in a home" list, not just the 3 items that
-# originally motivated using YOLOE at all.
+# Default YOLOE vocabulary: COCO classes + the curated home-item list above.
 DEFAULT_CUSTOM_CLASSES = sorted(set(COCO_80_CLASSES + HOME_ITEM_CLASSES))
 
 # Which real engine to use — config, not code, same pattern as YOLO_MODEL_PATH.
@@ -134,18 +99,13 @@ class FallbackVisionEngine(BaseVisionEngine):
     """
     def __init__(self):
         logger.warning("VisionAssist initialized FallbackVisionEngine. Running on Simulated Vision matrix.")
-        # Common household objects to mock local identification loops
         self.simulated_pool = ["keys", "phone", "wallet", "sunglasses", "backpack"]
 
     def scan_frame(self, image_buffer) -> dict:
-        """
-        Simulates scanning a camera buffer by returning 1-2 random items
-        from the tracking pool to keep the app working.
-        """
+        """Returns 1-2 random items from the mock pool to keep the app working."""
         if image_buffer is None:
             return {"detections": [], "annotated_frame": None}
 
-        # Simulate an automated detection confidence threshold pass
         detected_count = random.randint(1, 2)
         labels = random.sample(self.simulated_pool, k=detected_count)
         detections = [
@@ -153,27 +113,26 @@ class FallbackVisionEngine(BaseVisionEngine):
             for label in labels
         ]
         detections.sort(key=lambda d: d["confidence"], reverse=True)
-        # No real image to draw on in the mock path — annotated_frame stays None.
         return {"detections": detections, "annotated_frame": None}
 
 
-# --- REAL YOLO SYSTEM BOUNDARY ---
 try:
-    # Attempt to load your real computer vision stack
     import cv2
     import numpy as np
     from ultralytics import YOLO, YOLOE
 
     def _decode_frame(image_buffer):
         """
-        Normalize a Streamlit camera_input buffer (bytes-like UploadedFile),
-        raw bytes, or an already-decoded np.ndarray into a BGR np.ndarray
-        that ultralytics can run inference on. Shared by every real engine.
+        Normalize a file-like object exposing .getvalue(), raw bytes, or an
+        already-decoded np.ndarray into a BGR np.ndarray that ultralytics can
+        run inference on. Shared by every real engine. /ws/vision passes raw
+        bytes received straight off the WebSocket; the other branches exist
+        for any other caller (tests, a future REST upload endpoint, etc.).
         """
         if isinstance(image_buffer, np.ndarray):
             return image_buffer
         if hasattr(image_buffer, "getvalue"):
-            raw_bytes = image_buffer.getvalue()  # st.camera_input()'s UploadedFile
+            raw_bytes = image_buffer.getvalue()
         elif isinstance(image_buffer, (bytes, bytearray)):
             raw_bytes = image_buffer
         else:
@@ -190,16 +149,10 @@ try:
 
     def _draw_detections(frame, detections):
         """
-        Draw a box + label + confidence for each detection directly from our
-        own already-validated detection data, onto a copy of the decoded frame.
-
-        Deliberately NOT using ultralytics' Results.plot() here — its default
-        rendering varies by model task (segmentation checkpoints like YOLOE's
-        also render mask overlays, keypoints, etc., depending on what the
-        Results object carries), which is one more thing that can silently
-        differ or fail between YOLO and YOLOE without changing what scan_frame()
-        reports as detected. Drawing straight from `detections` guarantees the
-        image always shows exactly what the text output says, for every engine.
+        Draws straight from `detections` rather than ultralytics' own
+        Results.plot(), which renders differently per model task (YOLOE's
+        segmentation checkpoints also draw masks) — this guarantees the image
+        always matches what scan_frame() reports, for every engine.
         """
         annotated = frame.copy()
         for d in detections:
@@ -234,19 +187,15 @@ try:
                 if frame is None:
                     return {"detections": [], "annotated_frame": None}
 
-                # conf= enforces the confidence cutoff at the ultralytics/NMS level.
                 import time as _time
                 _start = _time.time()
                 results = self.model.predict(frame, conf=self.confidence_threshold, verbose=False)
-                _elapsed = _time.time() - _start
-                logger.info(f"Inference completed in {_elapsed:.3f}s for {type(self).__name__}")
+                logger.info(f"Inference completed in {_time.time() - _start:.3f}s for {type(self).__name__}")
 
                 detections = []
                 for result in results:
                     for box in result.boxes:
                         confidence = float(box.conf[0])
-                        # Defensive re-check: guarantees "eliminate outlying"
-                        # detections regardless of ultralytics' internal conf= behavior.
                         if confidence < self.confidence_threshold:
                             continue
                         class_id = int(box.cls[0])
@@ -260,10 +209,7 @@ try:
                         logger.debug(f"Detected: {label_name} ({confidence:.2%})")
                 detections.sort(key=lambda d: d["confidence"], reverse=True)
 
-                # Draw straight from `detections` (see _draw_detections' docstring
-                # for why, not ultralytics' Results.plot()), then convert BGR
-                # (OpenCV's native order) to RGB so callers (e.g. Streamlit's
-                # st.image) don't need to know this engine's internal color convention.
+                # BGR (OpenCV's native order) to RGB for callers.
                 annotated_frame = cv2.cvtColor(_draw_detections(frame, detections), cv2.COLOR_BGR2RGB)
 
                 return {"detections": detections, "annotated_frame": annotated_frame}
@@ -274,19 +220,11 @@ try:
 
     class YOLOVisionEngine(_UltralyticsScanMixin, BaseVisionEngine):
         def __init__(self, weights_path=None, confidence_threshold=DEFAULT_CONFIDENCE_THRESHOLD):
-            # Resolution order: explicit constructor arg > YOLO_MODEL_PATH env var >
-            # hardcoded local default. Mirrors OllamaMLEngine's OLLAMA_HOST pattern —
-            # swapping models per environment (local vs. a bigger cloud/GPU variant)
-            # is a config change, not a code change.
-            # `os.getenv(key, default)` only applies `default` when the key is
-            # *absent* — a key present-but-empty (which is exactly what Docker
-            # Compose passes through when YOLO_MODEL_PATH is unset in .env) would
-            # otherwise silently win over DEFAULT_LOCAL_WEIGHTS. Chaining `or`
-            # instead treats "" and "unset" identically.
+            # `or` (not os.getenv's default arg) so an empty-string env var —
+            # what Compose passes when YOLO_MODEL_PATH is unset — doesn't win
+            # over DEFAULT_LOCAL_WEIGHTS.
             self.weights_path = weights_path or os.getenv("YOLO_MODEL_PATH") or DEFAULT_LOCAL_WEIGHTS
             self.confidence_threshold = confidence_threshold
-            # Runtime degrade path: reuse the mock engine if real weights fail to
-            # load, instead of leaving the app with a crashed/None vision tracker.
             self._fallback = FallbackVisionEngine()
             try:
                 self.model = YOLO(self.weights_path)
@@ -304,10 +242,7 @@ try:
         fallback behavior as YOLOVisionEngine; only model loading differs.
         """
         def __init__(self, weights_path=None, confidence_threshold=DEFAULT_CONFIDENCE_THRESHOLD, classes=None):
-            # Same "" vs "unset" fix as YOLOVisionEngine — critical here, since
-            # without it a compose-injected empty/YOLO-flavored YOLO_MODEL_PATH
-            # would make YOLOEVisionEngine try to load a closed-set checkpoint
-            # through the open-vocabulary YOLOE class and fail outright.
+            # Same empty-string guard as YOLOVisionEngine.
             self.weights_path = weights_path or os.getenv("YOLO_MODEL_PATH") or DEFAULT_YOLOE_WEIGHTS
             self.confidence_threshold = confidence_threshold
             self.classes = classes or _resolve_custom_classes()
@@ -323,14 +258,10 @@ try:
                     f"YOLOEVisionEngine will use simulated detections until this is fixed.")
                 self.model = None
 
-    # Which engine backs VisionTracker — config, not code, same pattern as
-    # YOLO_MODEL_PATH. VISION_MODEL_TYPE=yoloe switches to the open-vocabulary
-    # engine without touching this file.
     _ENGINE_TYPES = {"yolo": YOLOVisionEngine, "yoloe": YOLOEVisionEngine}
     _selected_type = os.getenv("VISION_MODEL_TYPE", DEFAULT_VISION_MODEL_TYPE).strip().lower()
     VisionTracker = _ENGINE_TYPES.get(_selected_type, YOLOVisionEngine)
 
 except ImportError as e:
     logger.critical(f"Vision dependencies unavailable: {e}")
-    # Seamless substitution: App falls back cleanly to the mock engine
     VisionTracker = FallbackVisionEngine

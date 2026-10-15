@@ -1,11 +1,7 @@
 # Fine-Tuning YOLO26n: Plan (Not Yet Implemented)
 
 **Status: planning only.** Nothing in this document has been executed — no
-dataset downloaded, no training run, no code changed. This is carried forward
-and adapted from the equivalent planning work done in the earlier Streamlit
-prototype (`vision-assist`) this repo replaces; the research is unchanged, the
-file paths and a couple of mechanics (Docker, config) are updated for this
-repo's actual structure.
+dataset downloaded, no training run, no code changed.
 
 ## 1. The problem, precisely
 
@@ -227,7 +223,7 @@ model. What's actually needed:
 3. Point `YOLO_MODEL_PATH` at it in `docker-compose.yml`'s `backend` service —
    zero change to application code.
 
-## Open questions, same as the original plan
+## Open questions
 
 1. LVIS vs. Roboflow as the primary dataset — fine to start with LVIS and fall
    back if its filtered class counts prove too sparse.

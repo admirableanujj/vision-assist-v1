@@ -2,13 +2,8 @@
 
 `app/engines/vision/vision_engine.py` supports two real detection engines side by
 side, selected by config, not code. This guide is the practical "which one, and
-how" reference for this repo specifically — for the research behind *why* YOLOE
-exists and its real accuracy numbers, see `FINE_TUNING_YOLO_GUIDE.md` (Section 2).
-
-Adapted from the equivalent guide in the earlier Streamlit prototype
-(`vision-assist`) this repo replaces — the engine code and class-selection logic
-carried over directly; what's different here is everything about *how* you switch
-engines, since there's no longer a live UI control for it (see below).
+how" reference — for the research behind *why* YOLOE exists and its real
+accuracy numbers, see `FINE_TUNING_YOLO_GUIDE.md` (Section 2).
 
 ## TL;DR
 
@@ -27,11 +22,9 @@ accept the accuracy tradeoff in exchange for zero fine-tuning/dataset work.
 
 ## How switching actually works — env vars only (no UI toggle, yet)
 
-**Unlike the Streamlit prototype this repo replaces, there is currently no
-runtime UI control to switch engines.** The old app had a live "Detection engine"
-radio button in the camera panel; this app's React frontend has no equivalent —
-switching engines here means changing an environment variable and restarting the
-`backend` container. Adding a UI toggle (e.g. a dropdown in `App.jsx` that posts a
+**There is currently no runtime UI control to switch engines.** Switching
+means changing an environment variable and restarting the `backend`
+container. Adding a UI toggle (e.g. a dropdown in `App.jsx` that posts a
 "switch engine" message over `/ws/vision`, or a small REST endpoint the frontend
 calls before reconnecting) is a reasonable follow-up, not yet built.
 
@@ -95,10 +88,9 @@ docker logs -f vision_assist_api          # confirm YOLOEVisionEngine loaded wit
 docker-compose up -d --no-deps backend
 ```
 
-Each engine switch here means a **container restart** (env vars are read once at
-module import), not an instant in-app toggle — budget a few seconds per switch,
-unlike the old Streamlit app where both engines stayed resident simultaneously
-for instant switching. Revisit this once/if a live UI selector gets built.
+Each engine switch means a **container restart** (env vars are read once at
+module import), not an instant in-app toggle — budget a few seconds per switch.
+Revisit this once/if a live UI selector gets built.
 
 ## Why not just always use YOLOE?
 
