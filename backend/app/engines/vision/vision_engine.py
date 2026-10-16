@@ -222,10 +222,22 @@ try:
 
     class YOLOVisionEngine(_UltralyticsScanMixin, BaseVisionEngine):
         def __init__(self, weights_path=None, confidence_threshold=DEFAULT_CONFIDENCE_THRESHOLD):
-            # `or` (not os.getenv's default arg) so an empty-string env var —
-            # what Compose passes when YOLO_MODEL_PATH is unset — doesn't win
-            # over DEFAULT_LOCAL_WEIGHTS.
-            self.weights_path = weights_path or os.getenv("YOLO_MODEL_PATH") or DEFAULT_LOCAL_WEIGHTS
+            # FINE_TUNED_YOLO_MODEL_PATH takes priority over the shared
+            # YOLO_MODEL_PATH (kept for back-compat) specifically so pointing
+            # a fine-tuned checkpoint at YOLOVisionEngine can never also get
+            # picked up by YOLOEVisionEngine below — both engines can be
+            # resident in the same process (get_engine() caches each), and a
+            # plain-YOLO checkpoint loaded through the YOLOE class fails
+            # outright (wrong architecture), silently degrading YOLOE to mock
+            # detections. `or` (not os.getenv's default arg) so an
+            # empty-string env var — what Compose passes when unset — never
+            # wins over the real default.
+            self.weights_path = (
+                weights_path
+                or os.getenv("FINE_TUNED_YOLO_MODEL_PATH")
+                or os.getenv("YOLO_MODEL_PATH")
+                or DEFAULT_LOCAL_WEIGHTS
+            )
             self.confidence_threshold = confidence_threshold
             self._fallback = FallbackVisionEngine()
             try:
@@ -244,6 +256,8 @@ try:
         fallback behavior as YOLOVisionEngine; only model loading differs.
         """
         def __init__(self, weights_path=None, confidence_threshold=DEFAULT_CONFIDENCE_THRESHOLD, classes=None):
+            # Deliberately does NOT read FINE_TUNED_YOLO_MODEL_PATH — that
+            # var is YOLOVisionEngine-only, by design (see its comment).
             # Same empty-string guard as YOLOVisionEngine.
             self.weights_path = weights_path or os.getenv("YOLO_MODEL_PATH") or DEFAULT_YOLOE_WEIGHTS
             self.confidence_threshold = confidence_threshold
@@ -264,6 +278,23 @@ try:
     _selected_type = os.getenv("VISION_MODEL_TYPE", DEFAULT_VISION_MODEL_TYPE).strip().lower()
     VisionTracker = _ENGINE_TYPES.get(_selected_type, YOLOVisionEngine)
 
+    # Per-engine instance cache so callers (e.g. a per-connection engine
+    # choice over /ws/vision) can hold both YOLO and YOLOE resident at once
+    # and switch between them without a restart. Lazy: each engine is only
+    # constructed (and pays its load cost) the first time it's actually
+    # requested, not eagerly for both at import time.
+    _engine_cache: dict = {}
+
+    def get_engine(engine_type: str = None):
+        key = (engine_type or _selected_type or DEFAULT_VISION_MODEL_TYPE).strip().lower()
+        if key not in _engine_cache:
+            cls = _ENGINE_TYPES.get(key, YOLOVisionEngine)
+            _engine_cache[key] = cls()
+        return _engine_cache[key]
+
 except ImportError as e:
     logger.critical(f"Vision dependencies unavailable: {e}")
     VisionTracker = FallbackVisionEngine
+
+    def get_engine(engine_type: str = None):
+        return FallbackVisionEngine()
