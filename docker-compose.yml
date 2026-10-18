@@ -1,3 +1,8 @@
+# extra_hosts/host.docker.internal below: direct container-to-container
+# bridge routing was observed broken in a constrained environment (GitHub
+# Codespaces), while host-to-container via published ports worked fine.
+# Routing through the gateway + published port instead of the internal
+# service hostname sidesteps that without depending on a fix to it.
 services:
   # --- Frontend React Client ---
   frontend:
@@ -5,6 +10,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: vision_assist_web
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:80"
     depends_on:
@@ -18,13 +25,15 @@ services:
       dockerfile: Dockerfile
     container_name: vision_assist_api
     image: visionassist_backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./backend:/workspace
       - logs_storage:/workspace/logs
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OLLAMA_HOST=vision_assist_llm_local
-      - POSTGRES_HOST=vision_assist_db
+      - POSTGRES_HOST=host.docker.internal
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_DB=${POSTGRES_DB}
       - YOLO_MODEL_PATH=${YOLO_MODEL_PATH:-}
