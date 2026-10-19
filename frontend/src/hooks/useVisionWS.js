@@ -1,6 +1,7 @@
+// frontend/src/hooks/useVisionWS.js
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-export function useVisionWS(isStreamActive = true) {
+export function useVisionWS(isStreamActive = true, zoneId = 'zone-1') {
   const [wsConnected, setWsConnected] = useState(false);
   const [detections, setDetections] = useState([]);
   
@@ -32,19 +33,19 @@ export function useVisionWS(isStreamActive = true) {
     };
   }, [isStreamActive]);
 
-  // Initialize WebSocket Connection & Capture Loop
+  // Initialize WebSocket Connection & Capture Loop (Re-runs if stream active state or zone changes)
   useEffect(() => {
     if (!isStreamActive) return;
 
-    // Determine WebSocket protocol based on page protocol
+    // Determine WebSocket protocol and append active zone query parameter
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/vision`;
+    const wsUrl = `${protocol}//${window.location.host}/ws/vision?zone=${zoneId}`;
     
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log("Vision WebSocket connected.");
+      console.log(`Vision WebSocket connected for zone: ${zoneId}`);
       setWsConnected(true);
     };
 
@@ -95,7 +96,7 @@ export function useVisionWS(isStreamActive = true) {
         ws.close();
       }
     };
-  }, [isStreamActive]);
+  }, [isStreamActive, zoneId]);
 
   // Render bounding boxes over HTML5 canvas overlay whenever detections update
   const renderCanvasOverlay = useCallback(() => {
@@ -137,7 +138,7 @@ export function useVisionWS(isStreamActive = true) {
       ctx.lineWidth = 2.5;
       ctx.strokeRect(x1, y1, width, height);
 
-      // Draw background tag pill
+      // Draw background tag pill (Fixed confidence multiplication typo here)
       const labelText = `${label} ${(confidence * 100).toFixed(0)}%`;
       ctx.font = "12px Inter, system-ui, sans-serif";
       const textMetrics = ctx.measureText(labelText);

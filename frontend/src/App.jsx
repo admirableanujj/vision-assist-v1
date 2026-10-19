@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useVisionWS } from './hooks/useVisionWS';
 import { useAudioWS } from './hooks/useAudioWS';
-import { Camera, Mic, Activity, HardDrive, Cpu, LogOut, Flame, Sparkles } from 'lucide-react';
+import { Camera, Mic, Activity, HardDrive, Cpu, LogOut, Flame, Sparkles, Video, VideoOff, Layers } from 'lucide-react';
 import LoginModal from './components/LoginModal';
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(true);
+  const [selectedZone, setSelectedZone] = useState('zone-1');
 
   // Check for stored JWT token on mount
   useEffect(() => {
@@ -24,9 +26,9 @@ export default function App() {
     }
   }, []);
 
-  // Hook handles webcam stream, websocket communication, and canvas bounding box rendering automatically when authenticated
-  const { videoRef, canvasRef, wsConnected, detections } = useVisionWS(Boolean(user));
-  const {isListening, transcript, genieResponse, audioWsConnected, startListening, stopListening} = useAudioWS();
+  // Hook handles webcam stream, websocket communication, and canvas bounding box rendering automatically when authenticated & active
+  const { videoRef, canvasRef, wsConnected, detections } = useVisionWS(Boolean(user) && isCameraActive, selectedZone);
+  const { isListening, transcript, genieResponse, audioWsConnected, startListening, stopListening } = useAudioWS();
 
   // Handle Login Success
   const handleLoginSuccess = (userData) => {
@@ -79,14 +81,33 @@ export default function App() {
       <header className="border-b border-slate-800 px-6 py-4 flex justify-between items-center bg-slate-900/50">
         <div className="flex items-center gap-3">
           <Camera className="text-amber-400 w-6 h-6" />
-          <h1 className="font-bold text-xl tracking-tight">Vision Assist <span className="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full ml-2">v2.0 Pro</span></h1>
+          <h1 className="font-bold text-xl tracking-tight">
+            Vision Assist <span className="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full ml-2">v2.0 Pro</span>
+          </h1>
         </div>
+
+        {/* Header Controls: Zone Selector & System Status */}
         <div className="flex items-center gap-6 text-xs">
-          <div className="flex items-center gap-4 text-slate-400">
-            <span className="flex items-center gap-1.5"><Cpu className="w-4 h-4" /> YOLO Engine</span>
-            <span className="flex items-center gap-1.5"><HardDrive className="w-4 h-4" /> Ollama Local</span>
-            <span className={`w-2.5 h-2.5 rounded-full ${wsConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+          {/* Zone Selector */}
+          <div className="flex items-center gap-2 bg-slate-950/60 border border-slate-800 px-3 py-1.5 rounded-lg">
+            <Layers className="w-3.5 h-3.5 text-cyan-400" />
+            <select
+              value={selectedZone}
+              onChange={(e) => setSelectedZone(e.target.value)}
+              className="bg-transparent text-slate-200 focus:outline-none cursor-pointer"
+            >
+              <option value="zone-1" className="bg-slate-900">Zone 1: Main Lobby</option>
+              <option value="zone-2" className="bg-slate-900">Zone 2: Server Rack</option>
+              <option value="zone-3" className="bg-slate-900">Zone 3: Perimeter</option>
+            </select>
           </div>
+
+          <div className="hidden md:flex items-center gap-4 text-slate-400">
+            <span className="flex items-center gap-1.5"><Cpu className="w-4 h-4" /> YOLO</span>
+            <span className="flex items-center gap-1.5"><HardDrive className="w-4 h-4" /> Ollama</span>
+            <span className={`w-2.5 h-2.5 rounded-full ${wsConnected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} title="WebSocket Status" />
+          </div>
+
           <div className="flex items-center gap-3 border-l border-slate-800 pl-6">
             <span className="text-amber-300 font-medium">@{user.username}</span>
             <button
@@ -102,38 +123,67 @@ export default function App() {
 
       {/* Main Workspace */}
       <main className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 p-6">
-        {/* Left 2 Columns: Video Feed with Bounding Box Overlay */}
+        {/* Left 2 Columns: Video Feed with Bounding Box Overlay & Camera On/Off Toggle */}
         <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden relative flex items-center justify-center min-h-[480px]">
-          <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
-          <canvas ref={canvasRef} className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
+          {isCameraActive ? (
+            <>
+              <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
+              <canvas ref={canvasRef} className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center text-slate-500 space-y-2">
+              <VideoOff className="w-12 h-12 text-slate-600" />
+              <p className="text-sm">Camera Stream Offline ({selectedZone})</p>
+            </div>
+          )}
 
           {/* Controls Overlay */}
           <div className="absolute bottom-4 left-4 right-4 flex justify-between items-center bg-slate-950/80 backdrop-blur-md p-3 rounded-lg border border-slate-800">
-            <button //className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition"
-              // onMouse={startListening}
-              // onMouseUp={stopListening}
-              onMouseDown={startListening}
-              onMouseUp={stopListening}
-              onTouchStart={startListening}
-              onTouchEnd={stopListening}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition ${
-                isListening ? 'bg-rose-600 animate-pulse text-white shadow-lg shadow-rose-600/30' : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-              }`}>
-              <Mic className="w-4 h-4" /> {isListening ? "Listening(Release to Send)..." : "Push to Talk"}
-            </button>
-            <span className="text-xs text-slate-400">WS Status: {audioWsConnected ? "Connected" : "Disconnected"}</span>
+            <div className="flex items-center gap-3">
+              {/* Push-to-Talk Button */}
+              <button
+                onMouseDown={startListening}
+                onMouseUp={stopListening}
+                onTouchStart={startListening}
+                onTouchEnd={stopListening}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition ${
+                  isListening ? 'bg-rose-600 animate-pulse text-white shadow-lg shadow-rose-600/30' : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                }`}
+              >
+                <Mic className="w-4 h-4" /> {isListening ? "Listening..." : "Push to Talk"}
+              </button>
+
+              {/* Camera On/Off Toggle Button */}
+              <button
+                onClick={() => setIsCameraActive(!isCameraActive)}
+                className={`p-2 rounded-lg border transition ${
+                  isCameraActive 
+                    ? 'bg-slate-800 hover:bg-slate-700 text-emerald-400 border-slate-700' 
+                    : 'bg-rose-950/50 hover:bg-rose-900/50 text-rose-400 border-rose-800/50'
+                }`}
+                title={isCameraActive ? "Turn Camera Off" : "Turn Camera On"}
+              >
+                {isCameraActive ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+              </button>
+            </div>
+
+            <span className="text-xs text-slate-400">WS: {audioWsConnected ? "Connected" : "Disconnected"}</span>
           </div>
         </div>
+
         {/* Right Column: Reasoning & Context Stream */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between space-y-6 overflow-y-auto">
           
           {/* Section 1: YOLO Computer Vision Stream */}
           <div>
-            <h2 className="font-semibold text-sm text-slate-300 border-b border-slate-800 pb-2 mb-4 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-emerald-400" /> Spatial Vision Stream
+            <h2 className="font-semibold text-sm text-slate-300 border-b border-slate-800 pb-2 mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-2"><Activity className="w-4 h-4 text-emerald-400" /> Spatial Vision Stream</span>
+              <span className="text-[10px] text-cyan-400 uppercase font-mono bg-cyan-950/50 px-2 py-0.5 rounded border border-cyan-800/50">{selectedZone}</span>
             </h2>
             <div className="space-y-3">
-              {detections.length === 0 ? (
+              {!isCameraActive ? (
+                <p className="text-xs text-slate-500 italic">Camera is currently powered off...</p>
+              ) : detections.length === 0 ? (
                 <p className="text-xs text-slate-500 italic">No objects currently detected in view...</p>
               ) : (
                 detections.map((d, i) => (
@@ -176,26 +226,6 @@ export default function App() {
           </div>
 
         </div>
-        {/* Right Column: Reasoning & Context Stream */}
-        {/* <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
-          <div>
-            <h2 className="font-semibold text-sm text-slate-300 border-b border-slate-800 pb-2 mb-4 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-emerald-400" /> Spatial Intelligence Stream
-            </h2>
-            <div className="space-y-3">
-              {detections.length === 0 ? (
-                <p className="text-xs text-slate-500 italic">No objects currently detected in view...</p>
-              ) : (
-                detections.map((d, i) => (
-                  <div key={i} className="bg-slate-950/50 border border-slate-800/80 p-3 rounded-lg text-xs flex justify-between">
-                    <span className="font-medium text-slate-200 capitalize">{d.label}</span>
-                    <span className="text-emerald-400 font-mono">{(d.confidence * 100).toFixed(0)}% Match</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div> */}
       </main>
     </div>
   );
