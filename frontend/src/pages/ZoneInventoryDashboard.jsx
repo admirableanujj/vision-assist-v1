@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Camera, Sparkles, Flame, Layers, LogOut, Cpu, HardDrive, Video } from 'lucide-react';
+import { useAudioWS } from '../hooks/useAudioWS';
 
 export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraFeed }) {
   const [selectedZone, setSelectedZone] = useState('Zone 1: Main Lobby');
