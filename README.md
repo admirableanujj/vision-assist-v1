@@ -34,9 +34,16 @@ git clone https://github.com/admirableanujj/vision-assist-v1.git
 cd vision-assist-v1
 cp .env.example .env   # fill in OPENAI_API_KEY if using cloud STT
 
+
 mkdir -p secrets
 printf '%s' 'devpassword123' > secrets/postgres_password.txt
 printf '%s' 'unused-for-now' > secrets/qdrant_api_key.txt
+
+#for Windows System
+# New-Item -ItemType Directory -Path "secrets" -Force
+#Set-Content -Path "secrets/postgres_password.txt" -Value "devpassword123" -NoNewline
+#Set-Content -Path "secrets/qdrant_api_key.txt" -Value "unused-for-now" -NoNewline
+
 
 # --no-deps skips ollama/qdrant — add them back if you need the voice/LLM path
 docker-compose up -d --build --no-deps backend postgres frontend
