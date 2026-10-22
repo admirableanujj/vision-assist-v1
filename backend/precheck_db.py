@@ -294,17 +294,41 @@ def run_migrations_and_seeding():
                     VALUES (%s, 'Main Living Zone')
                     RETURNING id;
                 """, (admin_user_id,))
-
+                # add multiple zones if needed
+                cur.executemany("""
+                    INSERT INTO zones (user_id, name)
+                    VALUES (%s, %s)
+                """, [
+                    (admin_user_id, "Master Bedroom"),
+                    (admin_user_id, "Kitchen Zone")                   
+                ])
+                generated_admin_zone_id = cur.fetchone()[0]
+                cur.executemany("""
+                    INSERT INTO zones (user_id, name)
+                    VALUES (%s, %s)
+                """, [
+                    (std_user_id, "Zone1: Master Bedroom"),
+                    (std_user_id, "Zone2: Kitchen Zone")
+                ])
+                generated_std_zone_id = cur.fetchone()[0]
                 # --- D. Seed Camera linked to Admin ---
-                generated_zone_id = cur.fetchone()[0]
                 camera_id = "cam_living_room"
                 cur.execute("""
                     INSERT INTO cameras (id, owner_id, name, source, location, zone_id)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET zone_id = EXCLUDED.zone_id;
-                """, (camera_id, admin_user_id, "Living Room Cam", "rtsp://192.168.1.50/stream", "Living Room", generated_zone_id))
-
-
+                """, (camera_id, admin_user_id, "Living Room Cam", "rtsp://192.168.1.50/stream", "Living Room", generated_admin_zone_id))
+                
+                cur.executemany("""
+                    INSERT INTO cameras (id, owner_id, name, source, location, zone_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET zone_id = EXCLUDED.zone_id;
+                """, [
+                    ("cam_living_room", admin_user_id, "Living Room Cam", "rtsp://192.168.1.50/stream", "Living Room", generated_admin_zone_id),
+                    ("cam_kitchen", admin_user_id, "Kitchen Cam", "rtsp://192.168.1.51/stream", "Kitchen", generated_admin_zone_id),
+                    ("cam_living_room", std_user_id, "Living Room Cam", "rtsp://192.168.1.50/stream", "Living Room", generated_std_zone_id),
+                    ("cam_kitchen", std_user_id, "Kitchen Cam", "rtsp://192.168.1.51/stream", "Kitchen", generated_std_zone_id)
+                ])
 
                 logger.info("Default seeding data successfully inserted.")
             else:

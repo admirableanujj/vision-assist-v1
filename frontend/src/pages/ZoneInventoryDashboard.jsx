@@ -4,7 +4,8 @@ import { Camera, Sparkles, Flame, Layers, LogOut, Cpu, HardDrive, Video, Mic, Mi
 import { useAudioWS } from '../hooks/useAudioWS';
 
 export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraFeed }) {
-  const [selectedZone, setSelectedZone] = useState('zone-1');
+  const [zones, setZones] = useState([]);
+  const [selectedZone, setSelectedZone] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [genieOutput, setGenieOutput] = useState('Awaiting your command...');
   
@@ -16,7 +17,31 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
   // Audio STT WebSocket Hook Connection
   const { isRecording, transcript, aiResponse, startRecording, stopRecording, wsConnected } = useAudioWS();
 
-  // 1. Fetch Registered Items from Backend DB / Qdrant
+// 1. Fetch Zones from PostgreSQL DB on mount
+  const fetchZones = async () => {
+    try {
+      const res = await fetch('/api/v1/zones', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('vision_assist_token')}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.zones && data.zones.length > 0) {
+          setZones(data.zones);
+          setSelectedZone(data.zones[0].id); // Default to first DB zone
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load zones from database:", err);
+      // Fallback default zones if DB fetch fails
+      setZones([
+        { id: 'zone-1', name: 'Zone 1: Main Lobby' },
+        { id: 'zone-2', name: 'Zone 2: Server Room' },
+        { id: 'zone-3', name: 'Zone 3: Perimeter' }
+      ]);
+    }
+  };
+
+  // 2. Fetch Registered Items from Backend DB / Qdrant
   const fetchRegisteredObjects = async () => {
     try {
       const res = await fetch('/api/v1/items/registered', {
@@ -31,7 +56,7 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
     }
   };
 
-  // 2. Fetch Active Zone Objects Identified by YOLO / VisionTracker
+  // 3. Fetch Active Zone Objects Identified by YOLO / VisionTracker
   const fetchZoneIdentifiedObjects = async (zoneId) => {
     try {
       const res = await fetch(`/api/v1/zones/${zoneId}/detected`, {
@@ -45,19 +70,24 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
       console.error("Failed to load active zone objects:", err);
     }
   };
-
-  // Initial Load & Zone Switch Listener
+// Initial Load: Fetch Zones on Mount
   useEffect(() => {
+    fetchZones();
+  }, []);
+
+// Fetch zone items & setup polling whenever selectedZone changes
+  useEffect(() => {
+    if (!selectedZone) return;
     setLoading(true);
     Promise.all([
       fetchRegisteredObjects(),
       fetchZoneIdentifiedObjects(selectedZone)
     ]).finally(() => setLoading(false));
 
-    // Poll live zone detections every 3 seconds
+    // Poll live zone detections every 5 seconds
     const interval = setInterval(() => {
       fetchZoneIdentifiedObjects(selectedZone);
-    }, 3000);
+    }, 5000);
 
     return () => clearInterval(interval);
   }, [selectedZone]);
@@ -68,7 +98,7 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
     if (aiResponse) setGenieOutput(aiResponse);
   }, [transcript, aiResponse]);
 
-  // 3. Search Database for Registered Item
+  // 4. Search Database for Registered Item
   const handleSearchRegisteredItem = async (itemName) => {
     setSearchQuery(itemName);
     setGenieOutput(`Querying vector store for: "${itemName}"...`);
@@ -89,7 +119,7 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
     }
   };
 
-  // 4. Register Identified Object into DB Vector Store
+  // 5. Register Identified Object into DB Vector Store
   const handleRegisterIdentifiedItem = async (item) => {
     setGenieOutput(`Registering "${item.name}" into database vector store...`);
     try {
@@ -227,17 +257,26 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Objects Identified
               </h2>
               
+        {/* Dynamic Zone Selector mapped to PostgreSQL 'zones' table */}
               <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-700/80 px-3 py-1 rounded-lg text-xs">
                 <Layers className="w-3.5 h-3.5 text-cyan-400" />
-                <select 
-                  value={selectedZone} 
-                  onChange={(e) => setSelectedZone(e.target.value)}
-                  className="bg-transparent text-slate-200 focus:outline-none cursor-pointer"
-                >
-                  <option value="zone-1">Zone 1: Main Lobby</option>
-                  <option value="zone-2">Zone 2: Server Room</option>
-                  <option value="zone-3">Zone 3: Perimeter</option>
-                </select>
+                  <select 
+                    value={selectedZone} 
+                    onChange={(e) => setSelectedZone(Number(e.target.value))}
+                    className="bg-transparent text-slate-200 focus:outline-none cursor-pointer"
+                  >
+                    {zones && zones.length > 0 ? (
+                      zones.map((zone) => (
+                        <option key={zone.id} value={zone.id} className="bg-slate-900 text-slate-100">
+                          {zone.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled className="bg-slate-900 text-slate-400">
+                        Loading zones...
+                      </option>
+                    )}
+                  </select>
               </div>
             </div>
 

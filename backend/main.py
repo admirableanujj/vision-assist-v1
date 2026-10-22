@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.auth_routes import router as auth_router
 from app.api.vision_routes import router as vision_router
 from app.api.audio_routes import router as audio_router
+from app.api.zone_routes import router as zone_router
 from precheck_db import run_migrations_and_seeding
 from dotenv import load_dotenv
 
@@ -30,7 +31,7 @@ def startup_event():
 app.include_router(auth_router)
 app.include_router(vision_router)
 app.include_router(audio_router)
-
+app.include_router(zone_router)
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "services": {"postgres": "connected", "qdrant": "healthy"}}

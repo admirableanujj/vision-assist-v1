@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Camera, Video, VideoOff, Layers, LogOut, Cpu, HardDrive, LayoutGrid, Bot, Send } from 'lucide-react';
 import { useVisionWS } from '../hooks/useVisionWS';
+// import { useAudioWS } from '../hooks/useAudioWS';
 
 export default function CameraFeedDashboard({ user, onLogout, onToggleDashboard }) {
   const [selectedZone, setSelectedZone] = useState('zone-1');
