@@ -6,10 +6,15 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from app.models.schemas import LoginRequest, TokenResponse, UserResponse
 from app.core.security import verify_password, create_access_token
 from app.core.logging_config import get_logger
+# import jwt # pyjwt
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
+
+# security = HTTPBearer()
+# SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your_secret_key_here") # Match with your token creation secret
+# ALGORITHM = "HS256"
 
 def get_db_connection():
     """Dependency or helper to acquire a PostgreSQL connection."""
@@ -117,3 +122,26 @@ async def login(credentials: LoginRequest):
         )
     finally:
         conn.close()
+
+#implementation of get_current_user function for token decoding and user retrieval is in the security.py file, but here's a commented-out version for reference:        
+# async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+#     """
+#     Decodes the JWT bearer token from the authorization header 
+#     and returns the authenticated user payload.
+#     """
+#     token = credentials.credentials
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+#         user_id: int = payload.get("user_id")
+#         username: str = payload.get("sub")
+#         if user_id is None or username is None:
+#             raise HTTPException(
+#                 status_code=status.HTTP_401_UNAUTHORIZED,
+#                 detail="Could not validate credentials."
+#             )
+#         return {"id": user_id, "username": username, "role": payload.get("role")}
+#     except jwt.PyJWTError:
+#         raise HTTPException(
+#             status_code=status.HTTP_401_UNAUTHORIZED,
+#             detail="Invalid authentication token."
+#         )        

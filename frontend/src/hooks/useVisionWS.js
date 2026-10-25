@@ -1,6 +1,7 @@
+// frontend/src/hooks/useVisionWS.js
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-export function useVisionWS(isStreamActive = true) {
+export function useVisionWS(isStreamActive = true, zoneId = 1) {
   const [wsConnected, setWsConnected] = useState(false);
   const [detections, setDetections] = useState([]);
   
@@ -36,15 +37,14 @@ export function useVisionWS(isStreamActive = true) {
   useEffect(() => {
     if (!isStreamActive) return;
 
-    // Determine WebSocket protocol based on page protocol
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/vision`;
+    const wsUrl = `${protocol}//${window.location.host}/ws/vision?zone=${zoneId}`;
     
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log("Vision WebSocket connected.");
+      console.log(`Vision WebSocket connected for zone: ${zoneId}`);
       setWsConnected(true);
     };
 
@@ -68,7 +68,6 @@ export function useVisionWS(isStreamActive = true) {
       }
     };
 
-    // Frame Capture Loop (Sends snapshot every 100ms ~ 10 FPS)
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
 
@@ -95,9 +94,9 @@ export function useVisionWS(isStreamActive = true) {
         ws.close();
       }
     };
-  }, [isStreamActive]);
+  }, [isStreamActive, zoneId]);
 
-  // Render bounding boxes over HTML5 canvas overlay whenever detections update
+  // Render bounding boxes over HTML5 canvas overlay
   const renderCanvasOverlay = useCallback(() => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
@@ -108,7 +107,6 @@ export function useVisionWS(isStreamActive = true) {
 
     if (!detections.length) return;
 
-    // Match canvas internal resolution to video display bounds
     const displayWidth = video.clientWidth || 640;
     const displayHeight = video.clientHeight || 480;
     
@@ -123,7 +121,6 @@ export function useVisionWS(isStreamActive = true) {
     detections.forEach(({ label, confidence, box }) => {
       let [x1, y1, x2, y2] = box;
       
-      // Scale coordinates to match current canvas viewport
       x1 *= scaleX;
       y1 *= scaleY;
       x2 *= scaleX;
@@ -137,7 +134,7 @@ export function useVisionWS(isStreamActive = true) {
       ctx.lineWidth = 2.5;
       ctx.strokeRect(x1, y1, width, height);
 
-      // Draw background tag pill
+      // Corrected confidence calculation
       const labelText = `${label} ${(confidence * 100).toFixed(0)}%`;
       ctx.font = "12px Inter, system-ui, sans-serif";
       const textMetrics = ctx.measureText(labelText);
@@ -146,7 +143,6 @@ export function useVisionWS(isStreamActive = true) {
       ctx.fillStyle = "rgba(16, 185, 129, 0.85)";
       ctx.fillRect(x1, y1 > textHeight ? y1 - textHeight : y1, textMetrics.width + 10, textHeight);
 
-      // Draw label text
       ctx.fillStyle = "#020617"; // Slate 950
       ctx.fillText(labelText, x1 + 5, y1 > textHeight ? y1 - 4 : y1 + 12);
     });

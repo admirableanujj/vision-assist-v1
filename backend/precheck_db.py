@@ -37,9 +37,10 @@ def run_migrations_and_seeding():
     db_host = os.getenv("POSTGRES_HOST", "vision_assist_db")
     db_name = os.getenv("POSTGRES_DB", "vision_assist")
     db_user = os.getenv("POSTGRES_USER", "postgres")
+    password_file_path = os.getenv("POSTGRES_PASSWORD_FILE")
     # Safely check for the secret file path first
     secret_path = "/run/secrets/postgres_password"
-    if os.path.exists(secret_path):
+    if os.path.exists(secret_path) or (password_file_path and os.path.exists(password_file_path)):
         with open(secret_path, "r") as f:
             db_password = f.read().strip()
     else:
@@ -123,6 +124,7 @@ def run_migrations_and_seeding():
         """
         CREATE TABLE IF NOT EXISTS items (
             id VARCHAR(100) PRIMARY KEY,
+            user_id BIGINT UNIQUE REFERENCES users(id) ON DELETE CASCADE,
             owner_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
             item_name VARCHAR(100) NOT NULL,
             description TEXT,
@@ -131,29 +133,30 @@ def run_migrations_and_seeding():
             created_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_modified_by VARCHAR(50),
             last_modified_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            embedding VECTOR(512)
-        );
-        """,
-        # Cameras Table
-        """
-        CREATE TABLE IF NOT EXISTS cameras (
-            id VARCHAR(100) PRIMARY KEY,
-            owner_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
-            name VARCHAR(100) NOT NULL,
-            source VARCHAR(255),
-            location VARCHAR(100),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            zone_id VARCHAR(100) REFERENCES zones(id) ON DELETE CASCADE
+            embedding VARCHAR(512)
         );
         """,
         # Zones Table
         """
         CREATE TABLE IF NOT EXISTS zones (
-            id VARCHAR(100) PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
             name VARCHAR(100) NOT NULL
+            );
+            """,        
+        # Cameras Table
+        """
+        CREATE TABLE IF NOT EXISTS cameras (
+            id VARCHAR(100) PRIMARY KEY,
+            owner_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+            user_id BIGINT UNIQUE REFERENCES users(id) ON DELETE CASCADE,            
+            name VARCHAR(100) NOT NULL,
+            source VARCHAR(255),
+            location VARCHAR(100),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            zone_id INTEGER REFERENCES zones(id) ON DELETE SET NULL
         );
-        """,
+        """,                
         # Detections Table
         """
         CREATE TABLE IF NOT EXISTS detections (
@@ -278,21 +281,54 @@ def run_migrations_and_seeding():
                     VALUES (%s, %s);
                 """, (std_user_id, hashed_user_password))
 
-                # --- C. Seed Camera linked to Admin ---
+                # --- C. Seed default tracking Zones for camera ---
+                # cur.execute("""
+                #     INSERT INTO zones (id, user_id, name)
+                #     VALUES 
+                #         ( %s, 'Main Living Zone'),
+                #         ( %s, 'Key Hanger Shelf')
+                #     ON CONFLICT DO NOTHING;
+                # """, (admin_user_id, ))
+                cur.execute("""
+                    INSERT INTO zones (user_id, name)
+                    VALUES (%s, 'Main Living Zone')
+                    RETURNING id;
+                """, (admin_user_id,))
+                # add multiple zones if needed
+                cur.executemany("""
+                    INSERT INTO zones (user_id, name)
+                    VALUES (%s, %s)
+                """, [
+                    (admin_user_id, "Master Bedroom"),
+                    (admin_user_id, "Kitchen Zone")                   
+                ])
+                generated_admin_zone_id = cur.fetchone()[0]
+                cur.executemany("""
+                    INSERT INTO zones (user_id, name)
+                    VALUES (%s, %s)
+                """, [
+                    (std_user_id, "Zone1: Master Bedroom"),
+                    (std_user_id, "Zone2: Kitchen Zone")
+                ])
+                generated_std_zone_id = cur.fetchone()[0]
+                # --- D. Seed Camera linked to Admin ---
                 camera_id = "cam_living_room"
                 cur.execute("""
-                    INSERT INTO cameras (id, owner_id, name, source, location)
-                    VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING;
-                """, (camera_id, admin_user_id, "Living Room Cam", "rtsp://192.168.1.50/stream", "Living Room"))
-
-                # --- D. Seed default tracking Zones for camera ---
-                cur.execute("""
-                    INSERT INTO zones (id, camera_id, name, x1, y1, x2, y2)
-                    VALUES 
-                        ('zone_couch_table', %s, 'Coffee Table', 100, 150, 450, 400),
-                        ('zone_key_rack', %s, 'Key Hanger Shelf', 500, 50, 640, 200)
-                    ON CONFLICT DO NOTHING;
-                """, (camera_id, camera_id))
+                    INSERT INTO cameras (id, owner_id, name, source, location, zone_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET zone_id = EXCLUDED.zone_id;
+                """, (camera_id, admin_user_id, "Living Room Cam", "rtsp://192.168.1.50/stream", "Living Room", generated_admin_zone_id))
+                
+                cur.executemany("""
+                    INSERT INTO cameras (id, owner_id, name, source, location, zone_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET zone_id = EXCLUDED.zone_id;
+                """, [
+                    ("cam_living_room", admin_user_id, "Living Room Cam", "rtsp://192.168.1.50/stream", "Living Room", generated_admin_zone_id),
+                    ("cam_kitchen", admin_user_id, "Kitchen Cam", "rtsp://192.168.1.51/stream", "Kitchen", generated_admin_zone_id),
+                    ("cam_living_room", std_user_id, "Living Room Cam", "rtsp://192.168.1.50/stream", "Living Room", generated_std_zone_id),
+                    ("cam_kitchen", std_user_id, "Kitchen Cam", "rtsp://192.168.1.51/stream", "Kitchen", generated_std_zone_id)
+                ])
 
                 logger.info("Default seeding data successfully inserted.")
             else:

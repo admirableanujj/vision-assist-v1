@@ -1,62 +1,63 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 export function useAudioWS() {
-  const [isListening, setIsListening] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const [genieResponse, setGenieResponse] = useState('');
-  const [audioWsConnected, setAudioWsConnected] = useState(false);
+  const [aiResponse, setAiResponse] = useState('');
+  const [wsConnected, setWsConnected] = useState(false);
 
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
 
-  // Initialize or connect WebSocket for audio
-  const connectAudioWS = useCallback(() => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      return Promise.resolve(wsRef.current);
-    }
+  // Automatically establish WebSocket connection on mount
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/audio`;
+    
+    console.log("Connecting Audio WebSocket to:", wsUrl);
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
 
-    return new Promise((resolve, reject) => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws/audio`;
-      
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+    ws.onopen = () => {
+      console.log("Audio WebSocket connected successfully!");
+      setWsConnected(true);
+    };
 
-      ws.onopen = () => {
-        setAudioWsConnected(true);
-        resolve(ws);
-      };
+    ws.onclose = () => {
+      console.log("Audio WebSocket closed");
+      setWsConnected(false);
+    };
 
-      ws.onclose = () => {
-        setAudioWsConnected(false);
-      };
+    ws.onerror = (err) => {
+      console.error("Audio WebSocket error:", err);
+      setWsConnected(false);
+    };
 
-      ws.onerror = (err) => {
-        console.error("Audio WebSocket error:", err);
-        reject(err);
-      };
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.transcript) setTranscript(data.transcript);
+        if (data.response) setAiResponse(data.response);
+        if (data.message && !data.response) setAiResponse(data.message);
+      } catch (err) {
+        console.error("Failed to parse audio response JSON:", err);
+      }
+    };
 
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.transcript) setTranscript(data.transcript);
-          if (data.response) setGenieResponse(data.response);
-        } catch (err) {
-          console.error("Failed to parse audio response JSON:", err);
-        }
-      };
-    });
+    return () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    };
   }, []);
 
   // Start Recording Audio (Push-to-Talk Press)
-  const startListening = async () => {
+  const startRecording = async () => {
     setTranscript('');
-    setGenieResponse('');
+    setAiResponse('');
 
     try {
-      await connectAudioWS();
-
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
       mediaRecorderRef.current = mediaRecorder;
@@ -74,6 +75,9 @@ export function useAudioWS() {
         // Send recorded audio blob over WebSocket to FastAPI backend
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
           wsRef.current.send(audioBlob);
+        } else {
+          console.warn("Audio WebSocket is not open. Trying to reconnect...");
+          // Fallback or retry logic if needed
         }
 
         // Stop all microphone tracks to release hardware
@@ -81,27 +85,34 @@ export function useAudioWS() {
       };
 
       mediaRecorder.start();
-      setIsListening(true);
+      setIsRecording(true);
     } catch (err) {
       console.error("Microphone access or recording error:", err);
-      setIsListening(false);
+      setIsRecording(false);
+      setAiResponse("Microphone permission denied or hardware unavailable.");
     }
   };
 
   // Stop Recording Audio (Push-to-Talk Release)
-  const stopListening = () => {
-    if (mediaRecorderRef.current && isListening) {
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
-      setIsListening(false);
+      setIsRecording(false);
     }
   };
 
   return {
-    isListening,
+    isRecording,
     transcript,
-    genieResponse,
-    audioWsConnected,
-    startListening,
-    stopListening,
+    aiResponse,
+    wsConnected,
+    startRecording,
+    stopRecording,
+    // Aliases for compatibility if needed elsewhere
+    isListening: isRecording,
+    genieResponse: aiResponse,
+    audioWsConnected: wsConnected,
+    startListening: startRecording,
+    stopListening: stopRecording,
   };
 }

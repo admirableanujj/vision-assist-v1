@@ -1,4 +1,4 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect,Query
 import logging
 
 from app.engines.vision import VisionTracker
@@ -23,7 +23,7 @@ def _wire_safe_detections(detections: list) -> list:
     ]
 
 @router.websocket("/ws/vision")
-async def vision_websocket(websocket: WebSocket):
+async def vision_websocket(websocket: WebSocket, zone: str = Query("zone-1", description="Active facility security zone")):
     await websocket.accept()
     logger.info(f"Client connected to Vision WebSocket stream (engine={type(tracker).__name__}).")
 
@@ -39,6 +39,7 @@ async def vision_websocket(websocket: WebSocket):
             # `detections` alone, so `annotated_frame` is never sent.
             await websocket.send_json({
                 "status": "success",
+                "zone": zone,
                 "detections": _wire_safe_detections(result["detections"]),
             })
 

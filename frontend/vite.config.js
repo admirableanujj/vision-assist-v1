@@ -5,8 +5,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: '0.0.0.0',
-    port: 80,
+    host: true,
+    port: 3000,
     proxy: {
       '/api': {
         target: 'http://backend:8000',
@@ -14,8 +14,9 @@ export default defineConfig({
       },
       '/ws': {
         target: 'ws://backend:8000',
-        ws: true,
-      }
-    }
-  }
-})
+        ws: true, // Enable WebSocket proxying
+        changeOrigin: true,
+      },
+    },
+  },
+});
