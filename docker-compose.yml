@@ -33,7 +33,7 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OLLAMA_HOST=vision_assist_llm_local
-      - POSTGRES_HOST=postgres
+      - POSTGRES_HOST=host.docker.internal
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_DB=${POSTGRES_DB}
       # - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -138,6 +138,6 @@ volumes:
 
 secrets:
   postgres_password:
-    file: ./secrets/postgres_password
+    file: ./secrets/postgres_password.txt
   qdrant_api_key:
-    file: ./secrets/qdrant_api_key
+    file: ./secrets/qdrant_api_key.txt
