@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Docker secrets (postgres_password.txt, qdrant_api_key.txt)
+secrets/

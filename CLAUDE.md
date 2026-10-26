@@ -23,7 +23,7 @@ npm run dev
 docker-compose up -d --build
 ```
 
-Requires `.env` (copy from `.env.example`) and `./secrets/` (`postgres_password.txt`, `qdrant_api_key.txt`, git-ignored) before `docker-compose up` — see `.env.example` for the exact variables.
+Requires `.env` (copy from `.env.example`) and `./secrets/` (`postgres_password.txt`, `qdrant_api_key.txt`, git-ignored; UTF-8, no BOM, no trailing newline — on Windows write them with `[IO.File]::WriteAllText`, never `echo >`) before `docker-compose up` — see `.env.example` for the exact variables.
 
 Services (`docker-compose.yml`):
 

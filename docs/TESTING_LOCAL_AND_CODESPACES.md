@@ -169,6 +169,28 @@ printf '%s' 'devpassword123' > secrets/postgres_password.txt
 printf '%s' 'unused-for-now' > secrets/qdrant_api_key.txt
 ```
 
+On Windows (PowerShell), create the secrets like this instead:
+
+```powershell
+# Windows (PowerShell) — do NOT use `echo ... >` or `Out-File`/`Set-Content`
+# without care: they can write UTF-16 or add a BOM/trailing newline, which
+# corrupts the secret. WriteAllText writes UTF-8 with no BOM and no newline.
+New-Item -ItemType Directory -Path secrets -Force | Out-Null
+[IO.File]::WriteAllText("$PWD\secrets\postgres_password.txt", 'devpassword123')
+[IO.File]::WriteAllText("$PWD\secrets\qdrant_api_key.txt", 'unused-for-now')
+```
+
+> **Secret file format:** each file in `secrets/` must be **UTF-8, no BOM,
+> no trailing newline** — the file's bytes are used verbatim as the
+> password/API key. The `printf '%s'` (bash) and `[IO.File]::WriteAllText`
+> (PowerShell) commands above produce exactly that. Check with
+> `file secrets/*.txt` (expect `ASCII text, with no line terminators`) or, in
+> PowerShell, `Format-Hex secrets\postgres_password.txt` (no leading
+> `FF FE`/`EF BB BF`, no trailing `0D 0A`). If Docker ever creates
+> `secrets/postgres_password` or `secrets/qdrant_api_key` as empty
+> **folders**, the `.txt` files were missing at `docker-compose up` — delete
+> those folders, create the files, and start again.
+
 Edit `.env` and set `POSTGRES_USER=postgres`, `POSTGRES_DB=vision_assist` —
 the password itself comes only from `secrets/postgres_password.txt`
 (`POSTGRES_PASSWORD_FILE` in `docker-compose.yml`), not from `.env`.

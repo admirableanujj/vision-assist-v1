@@ -139,6 +139,6 @@ volumes:
 
 secrets:
   postgres_password:
-    file: ./secrets/postgres_password
+    file: ./secrets/postgres_password.txt
   qdrant_api_key:
-    file: ./secrets/qdrant_api_key
+    file: ./secrets/qdrant_api_key.txt
