@@ -57,12 +57,13 @@ or GitHub Codespaces, including test credentials — see
 
 Object detection defaults to YOLO26n (COCO's 80 classes). YOLOE, an
 open-vocabulary alternative, can detect additional classes (e.g. `keys`,
-`wallet`, `sunglasses` — none of which are COCO classes) at a lower accuracy,
-selected via `VISION_MODEL_TYPE=yoloe` in `.env` (container restart required,
-no live UI toggle yet). See **`docs/YOLO_VS_YOLOE_GUIDE.md`** for the full
-comparison and switching instructions, and
-**`docs/FINE_TUNING_YOLO_GUIDE.md`** for the (planning-only) plan to close
-that class gap with a real fine-tuned model instead of zero-shot detection.
+`wallet`, `sunglasses` — none of which are COCO classes) at a lower accuracy.
+Switch between them live from the camera dashboard's header toggle — no
+restart needed; the startup default is still set via `VISION_MODEL_TYPE` in
+`.env`. See **`docs/YOLO_VS_YOLOE_GUIDE.md`** for the full comparison and
+switching details, and **`docs/FINE_TUNING_YOLO_GUIDE.md`** for the
+(planning-only) plan to close that class gap with a real fine-tuned model
+instead of zero-shot detection.
 
 ## Architecture
 

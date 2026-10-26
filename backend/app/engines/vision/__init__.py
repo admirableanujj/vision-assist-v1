@@ -1,7 +1,7 @@
 # app/engines/vision/__init__.py
-from .vision_engine import VisionTracker, FallbackVisionEngine
+from .vision_engine import VisionTracker, FallbackVisionEngine, get_engine
 
-__all__ = ["VisionTracker", "FallbackVisionEngine"]
+__all__ = ["VisionTracker", "FallbackVisionEngine", "get_engine"]
 
 # YOLOVisionEngine/YOLOEVisionEngine only exist if cv2/numpy/ultralytics loaded
 # successfully (see the try/except ImportError boundary in vision_engine.py) —

@@ -3,16 +3,21 @@ import { Camera, Video, VideoOff, Layers, LogOut, Cpu, HardDrive, LayoutGrid, Bo
 import { useVisionWS } from '../hooks/useVisionWS';
 // import { useAudioWS } from '../hooks/useAudioWS';
 
+const ENGINE_OPTIONS = ['yolo', 'yoloe'];
+
 export default function CameraFeedDashboard({ user, onLogout, onToggleDashboard }) {
   const [selectedZone, setSelectedZone] = useState('zone-1');
   const [isVideoActive, setIsVideoActive] = useState(true);
+  const [engineChoice, setEngineChoice] = useState('yolo');
   const [assistantInput, setAssistantInput] = useState('');
   const [chatMessages, setChatMessages] = useState([
     { sender: 'assistant', text: 'Hello Operator. Stream monitoring active. How can I assist you?' }
   ]);
 
-  // Hook connecting live vision WebSocket stream for selected camera/zone
-  const { videoRef, canvasRef, wsConnected, detections } = useVisionWS(isVideoActive, selectedZone);
+  // Hook connecting live vision WebSocket stream for selected camera/zone.
+  // engineChoice drives which engine the backend uses — changing it
+  // reconnects the socket with a new ?engine=, no backend restart.
+  const { videoRef, canvasRef, wsConnected, detections, activeEngine } = useVisionWS(isVideoActive, engineChoice, selectedZone);
 
   const handleAssistantSend = (e) => {
     e.preventDefault();
@@ -48,7 +53,26 @@ export default function CameraFeedDashboard({ user, onLogout, onToggleDashboard 
 
         <div className="flex items-center gap-6 text-xs">
           <div className="hidden md:flex items-center gap-4 text-slate-400">
-            <span className="flex items-center gap-1.5"><Cpu className="w-3.5 h-3.5 text-cyan-400" /> YOLO</span>
+            <div className="flex items-center gap-1.5">
+              <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+              <div className="flex items-center gap-0.5 bg-slate-800 rounded-full p-0.5">
+                {ENGINE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt}
+                    onClick={() => setEngineChoice(opt)}
+                    title={opt === 'yoloe' ? 'Open-vocabulary, broader classes, lower accuracy' : 'Fixed 80 COCO classes, most accurate'}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide transition cursor-pointer ${
+                      engineChoice === opt
+                        ? 'bg-emerald-600 text-white'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+              {!activeEngine && <span className="text-amber-400 text-[10px] italic">switching…</span>}
+            </div>
             <span className="flex items-center gap-1.5"><HardDrive className="w-3.5 h-3.5 text-indigo-400" /> Ollama</span>
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
           </div>

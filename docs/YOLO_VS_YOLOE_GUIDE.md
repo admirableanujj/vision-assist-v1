@@ -20,22 +20,37 @@ what it's built for. **Use YOLOE when you need the broader coverage** (`keys`,
 `wallet`, `sunglasses`, or general home items YOLO structurally can't detect) —
 accept the accuracy tradeoff in exchange for zero fine-tuning/dataset work.
 
-## How switching actually works — env vars only (no UI toggle, yet)
+## Switching from the UI (no restart needed)
 
-**There is currently no runtime UI control to switch engines.** Switching
-means changing an environment variable and restarting the `backend`
-container. Adding a UI toggle (e.g. a dropdown in `App.jsx` that posts a
-"switch engine" message over `/ws/vision`, or a small REST endpoint the frontend
-calls before reconnecting) is a reasonable follow-up, not yet built.
+The header has a live **YOLO / YOLOE toggle** right next to the camera status
+indicator — click either option and the camera feed reconnects with the new
+engine within a second or two. No `.env` edit, no container restart.
 
-`VisionTracker` (resolved once, at module import time, in
-`app/engines/vision/vision_engine.py`) picks its engine from three env vars —
-**`docker-compose.yml`'s `backend` service already wires all three through**:
+Mechanically: `CameraFeedDashboard.jsx` tracks the selection and passes it to
+`useVisionWS`, which includes it as `?engine=` on the `/ws/vision` WebSocket URL and
+reconnects whenever it changes (plain React — `engine` is just a dependency
+of the effect that opens the socket). The backend's `get_engine()`
+(`app/engines/vision/vision_engine.py`) keeps **both** engines cached once
+each has been used, so switching back and forth after the first time is
+instant; the very first time you pick an engine in a given backend process,
+there's a brief load delay while it constructs — the header shows
+"switching…" until the server actually confirms which engine is live (each
+detection response carries an `engine` field alongside `detections`), so
+what you see reflects what actually served it, not just what you clicked.
+
+## Setting the startup default — env vars
+
+The UI toggle always starts from whatever `VISION_MODEL_TYPE` resolved to at
+backend boot. This still matters for the container's initial state, and for
+anything outside the running app (scripts, `VisionTracker`, tests) that
+doesn't go through `/ws/vision?engine=`. **`docker-compose.yml`'s `backend`
+service already wires all four vars through**:
 
 | Var | Applies to | Default | Purpose |
 |---|---|---|---|
 | `VISION_MODEL_TYPE` | Both | `yolo` | `yolo` or `yoloe` — which engine backs `VisionTracker` |
-| `YOLO_MODEL_PATH` | Both | `yolo26n.pt` (YOLO) / `yoloe-26n-seg.pt` (YOLOE) | Weights file — same var name for both, interpreted per whichever engine is active |
+| `FINE_TUNED_YOLO_MODEL_PATH` | **YOLO only** | unset | Weights file for `YOLOVisionEngine` specifically — use this, not `YOLO_MODEL_PATH`, when pointing at a fine-tuned checkpoint, since both engines can be resident at once and `YOLO_MODEL_PATH` is read by both |
+| `YOLO_MODEL_PATH` | Both (legacy) | `yolo26n.pt` (YOLO) / `yoloe-26n-seg.pt` (YOLOE) | Still read by both for back-compat — avoid setting this if you only want to override YOLO's weights, since YOLOE would pick up the same value |
 | `VISION_CUSTOM_CLASSES` | YOLOE only | 80 COCO classes + ~250 curated home items (~297 total) | Comma-separated class names passed to `set_classes()` — **replaces** the default entirely, doesn't add to it |
 
 ```bash
@@ -65,32 +80,25 @@ connects to `/ws/vision`, if you'd rather check per-connection than at boot.
 
 ## Testing both, side by side
 
+Bring the stack up once (default `VISION_MODEL_TYPE=yolo`), then do
+everything else from the browser:
+
 ```bash
-# 1. Test YOLO first (the default — no .env changes needed)
-docker-compose up -d --build backend postgres
+docker-compose up -d --build backend postgres frontend
 docker logs -f vision_assist_api   # wait for boot
-
-# Open the frontend, allow camera access, hold up a phone/keys/wallet.
-# keys/wallet should NOT appear as bounding boxes — confirms the class gap.
-
-# 2. Switch to YOLOE
-echo "VISION_MODEL_TYPE=yoloe" >> .env
-docker-compose up -d --no-deps backend   # restart only, no rebuild
-docker logs -f vision_assist_api          # confirm YOLOEVisionEngine loaded with classes=[...]
-
-# Same test, same objects. Expect the same everyday classes (person, cell phone)
-# plus, potentially, keys/wallet/sunglasses — at visibly lower confidence scores
-# than YOLO reported for the classes both engines know. That's the accuracy
-# tradeoff from the TL;DR table, observed directly.
-
-# 3. Switch back
-# remove/comment the VISION_MODEL_TYPE line from .env, then:
-docker-compose up -d --no-deps backend
 ```
 
-Each engine switch means a **container restart** (env vars are read once at
-module import), not an instant in-app toggle — budget a few seconds per switch.
-Revisit this once/if a live UI selector gets built.
+1. Open the frontend, allow camera access, hold up a phone/keys/wallet with
+   the toggle on **YOLO**. `keys`/`wallet` should **not** appear as bounding
+   boxes — confirms the class gap.
+2. Click **YOLOE** in the header toggle. First click after boot takes a
+   moment (constructing the engine); after that it's instant.
+3. Same objects, same framing. Expect the same everyday classes (`person`,
+   `cell phone`) plus, potentially, `keys`/`wallet`/`sunglasses` — at visibly
+   lower confidence scores than YOLO reported for the classes both engines
+   know. That's the accuracy tradeoff from the TL;DR table, observed
+   directly, not just read about.
+4. Click **YOLO** again — instant, since it's still cached from step 1.
 
 ## Why not just always use YOLOE?
 
