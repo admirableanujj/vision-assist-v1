@@ -1,14 +1,12 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect,Query
 import logging
 
-from app.engines.vision import VisionTracker
+from app.engines.vision import get_engine
 
 logger = logging.getLogger("vision_routes")
 router = APIRouter(tags=["Vision & Object Detection"])
 
-# Resolves to YOLOVisionEngine or YOLOEVisionEngine per VISION_MODEL_TYPE, and
-# degrades to FallbackVisionEngine internally on load failure.
-tracker = VisionTracker()
+_VALID_ENGINES = {"yolo", "yoloe"}
 
 # FallbackVisionEngine reports box=None (nothing real to draw around), but the
 # frontend's canvas overlay destructures `box` unconditionally with no null
@@ -23,8 +21,24 @@ def _wire_safe_detections(detections: list) -> list:
     ]
 
 @router.websocket("/ws/vision")
-async def vision_websocket(websocket: WebSocket, zone: str = Query("zone-1", description="Active facility security zone")):
+async def vision_websocket(
+    websocket: WebSocket,
+    engine: str = None,
+    zone: str = Query("zone-1", description="Active facility security zone"),
+):
     await websocket.accept()
+
+    # Per-connection engine choice (?engine=yolo|yoloe), defaulting to
+    # VISION_MODEL_TYPE if omitted — get_engine() caches instances, so
+    # switching engines only pays a load cost the first time each one is
+    # actually requested; the frontend reconnects with a different ?engine=
+    # to switch, no backend restart needed.
+    requested = (engine or "").strip().lower()
+    if requested and requested not in _VALID_ENGINES:
+        logger.warning(f"Unknown engine '{engine}' requested, falling back to default.")
+        requested = None
+    tracker = get_engine(requested or None)
+
     logger.info(f"Client connected to Vision WebSocket stream (engine={type(tracker).__name__}).")
 
     try:
@@ -39,6 +53,7 @@ async def vision_websocket(websocket: WebSocket, zone: str = Query("zone-1", des
             # `detections` alone, so `annotated_frame` is never sent.
             await websocket.send_json({
                 "status": "success",
+                "engine": type(tracker).__name__,
                 "zone": zone,
                 "detections": _wire_safe_detections(result["detections"]),
             })
