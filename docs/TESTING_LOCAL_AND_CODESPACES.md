@@ -12,8 +12,9 @@ Set your machine to **4-core/16GB** first (command palette → "Codespaces:
 Change Machine Type") — torch + ultralytics + YOLOE's CLIP dependency is
 tight on the 2-core/8GB default.
 
-**Step 1** — env, secrets, build+start, and the DB workaround below, all in
-one paste (the heredoc is intentionally unquoted — `$HASH` needs to expand):
+**Step 1** — env, secrets, build+start, all in one paste. `precheck_db.py`
+now creates the full schema and seeds test accounts automatically on first
+boot (see "DB seeding" below) — no manual DB workaround needed anymore:
 
 ```bash
 cp .env.example .env
@@ -23,51 +24,17 @@ printf '%s' 'devpassword123' > secrets/postgres_password.txt
 printf '%s' 'unused-for-now' > secrets/qdrant_api_key.txt
 
 docker-compose up -d --build --no-deps backend postgres frontend
-
-until docker exec vision_assist_db pg_isready -U postgres -d vision_assist >/dev/null 2>&1; do sleep 2; done
-
-HASH=$(python3 -c "
-import hashlib, uuid
-salt = uuid.uuid4().hex
-print(f'{salt}:' + hashlib.sha256(('test_user' + salt).encode()).hexdigest())
-")
-
-docker exec -i vision_assist_db psql -U postgres -d vision_assist << EOF
-CREATE TABLE IF NOT EXISTS users (
-    id BIGSERIAL PRIMARY KEY, guid_user VARCHAR(36) UNIQUE,
-    username VARCHAR(50) UNIQUE NOT NULL, first_name VARCHAR(50), last_name VARCHAR(50),
-    email VARCHAR(100) UNIQUE, role INT DEFAULT 1, status VARCHAR(20) DEFAULT 'active',
-    is_active BOOLEAN DEFAULT TRUE, created_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_modified_by VARCHAR(50), last_modified_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE IF NOT EXISTS user_login (
-    id BIGSERIAL PRIMARY KEY, user_id BIGINT UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-    hashed_password VARCHAR(256) NOT NULL, created_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_modified_by VARCHAR(50), last_modified_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE IF NOT EXISTS user_login_history (
-    id BIGSERIAL PRIMARY KEY, user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
-    login_status VARCHAR(20) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_modified_by VARCHAR(50), last_modified_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-INSERT INTO users (guid_user, username, first_name, last_name, email, role, is_active)
-VALUES (gen_random_uuid()::text, 'test_user', 'Test', 'User', 'test@visionassist.local', 1, TRUE)
-ON CONFLICT (username) DO NOTHING;
-INSERT INTO user_login (user_id, hashed_password)
-SELECT id, '$HASH' FROM users WHERE username = 'test_user'
-ON CONFLICT (user_id) DO UPDATE SET hashed_password = EXCLUDED.hashed_password;
-EOF
+docker logs -f vision_assist_api   # wait for "DB migrations completed successfully."
 
 echo ""
 echo "Open: https://${CODESPACE_NAME}-3000.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
 echo "Login: test_user / test_user"
 ```
 
-Safe to re-run — `ON CONFLICT` means it won't fail if `test_user` already exists (e.g. from an earlier attempt or after a `docker-compose down` without `-v`); it just refreshes the password hash each time.
-
 Click the printed URL (if the port shows Private and won't load: Ports tab →
-right-click port 3000 → Port Visibility → Public), log in, allow camera
-access.
+right-click port 3000 → Port Visibility → Public), log in. You'll land on
+the **Zone Inventory** dashboard — click **Camera Stream** in the header to
+reach the live vision feed and allow camera access.
 
 **Step 2 (optional)** — skip login and confirm the vision engine itself
 works, independent of the frontend/auth:
@@ -88,74 +55,24 @@ Expect `{"status": "success", "detections": [...]}`. The rest of this guide
 below is the same workflow spelled out step by step (useful for local Docker
 setup, understanding what the quick start does, or switching to YOLOE).
 
-## Before you start: the DB migration workaround
+## DB seeding — automatic, no workaround needed
 
-`precheck_db.py`'s migrations currently fail on a fresh database (a `VECTOR`
-column type with no pgvector extension installed, among other issues), and
-the failure is swallowed, so the backend boots as if nothing went wrong.
-**Without this workaround, login — and so the full browser flow — will fail
-with "relation does not exist."** The direct WebSocket check below doesn't
-need this at all, since it never touches auth.
+`precheck_db.py` runs on every backend boot (`main.py`'s `startup_event`),
+creates the full schema (`users`, `zones`, `cameras`, `items`, `detections`,
+etc.) if it doesn't exist, and — only on a genuinely empty `users` table —
+seeds two accounts:
 
-Once `postgres` is up (see setup below), create just enough schema by hand
-and seed a test login. `auth_routes.py` checks the password against
-`salt:sha256(password + salt)` (`app/core/security.py`'s `verify_password`):
+| Username | Password | Role |
+|---|---|---|
+| `test_user` | `test_user` | standard user, with a couple of pre-seeded zones/cameras |
+| `admin` | `adminpassword123` | admin |
 
-```bash
-HASH=$(python3 -c "
-import hashlib, uuid
-salt = uuid.uuid4().hex
-print(f'{salt}:' + hashlib.sha256(('test_user' + salt).encode()).hexdigest())
-")
-
-docker exec -i vision_assist_db psql -U postgres -d vision_assist << EOF
-CREATE TABLE IF NOT EXISTS users (
-    id BIGSERIAL PRIMARY KEY,
-    guid_user VARCHAR(36) UNIQUE,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    first_name VARCHAR(50),
-    last_name VARCHAR(50),
-    email VARCHAR(100) UNIQUE,
-    role INT DEFAULT 1,
-    status VARCHAR(20) DEFAULT 'active',
-    is_active BOOLEAN DEFAULT TRUE,
-    created_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_modified_by VARCHAR(50),
-    last_modified_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS user_login (
-    id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-    hashed_password VARCHAR(256) NOT NULL,
-    created_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_modified_by VARCHAR(50),
-    last_modified_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS user_login_history (
-    id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
-    login_status VARCHAR(20) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_modified_by VARCHAR(50),
-    last_modified_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-INSERT INTO users (guid_user, username, first_name, last_name, email, role, is_active)
-VALUES (gen_random_uuid()::text, 'test_user', 'Test', 'User', 'test@visionassist.local', 1, TRUE)
-ON CONFLICT (username) DO NOTHING;
-
-INSERT INTO user_login (user_id, hashed_password)
-SELECT id, '$HASH' FROM users WHERE username = 'test_user'
-ON CONFLICT (user_id) DO UPDATE SET hashed_password = EXCLUDED.hashed_password;
-EOF
-```
-
-Safe to re-run (`ON CONFLICT` means it won't fail if `test_user` already
-exists — it just refreshes the password hash). You can now log in with
-`test_user` / `test_user`. This is a workaround, not a fix — the real fix
-belongs in `precheck_db.py`.
+This is idempotent — re-running `docker-compose up` against an existing
+Postgres volume skips seeding (`Table datasets contain prior objects.` in
+the logs) rather than erroring or duplicating rows. No manual `psql` setup
+is needed before logging in; just wait for `docker logs vision_assist_api`
+to show `DB migrations completed successfully.` before hitting the login
+page.
 
 ## Local (Docker)
 
@@ -203,7 +120,8 @@ docker-compose up -d --build --no-deps backend postgres frontend
 docker logs -f vision_assist_api   # wait for "Application startup complete"
 ```
 
-Apply the DB workaround above, then:
+No further DB setup needed — `precheck_db.py` seeds `test_user`/`admin`
+automatically on first boot (see "DB seeding" above).
 
 ### Option A — direct WebSocket check (fastest, no login needed)
 
@@ -229,9 +147,11 @@ broken.
 
 ### Option B — full browser flow
 
-Open `http://localhost:3000`, log in (`test_user`/`test_user` from the
-workaround above), allow camera access. You should see your own feed with
-live bounding boxes drawn client-side as `useVisionWS.js` receives detections.
+Open `http://localhost:3000`, log in (`test_user`/`test_user`, auto-seeded —
+see "DB seeding" above). You'll land on the Zone Inventory dashboard; click
+**Camera Stream** in the header, then allow camera access. You should see
+your own feed with live bounding boxes drawn client-side as
+`useVisionWS.js` receives detections.
 
 Confirm which engine is actually running:
 ```bash
@@ -270,5 +190,5 @@ in the Ports tab → Port Visibility → Public.
 
 ```bash
 docker-compose down        # stop + remove containers, keep volumes (DB data survives)
-docker-compose down -v     # also wipe volumes — full reset, re-apply the DB workaround next time
+docker-compose down -v     # also wipe volumes — full reset; precheck_db.py reseeds test_user/admin on next boot
 ```
