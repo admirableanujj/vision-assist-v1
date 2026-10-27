@@ -1,10 +1,11 @@
 // frontend/src/hooks/useVisionWS.js
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-export function useVisionWS(isStreamActive = true, zoneId = 1) {
+export function useVisionWS(isStreamActive = true, engine = 'yolo', zoneId = 'zone-1') {
   const [wsConnected, setWsConnected] = useState(false);
   const [detections, setDetections] = useState([]);
-  
+  const [activeEngine, setActiveEngine] = useState(null);
+
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const wsRef = useRef(null);
@@ -33,13 +34,23 @@ export function useVisionWS(isStreamActive = true, zoneId = 1) {
     };
   }, [isStreamActive]);
 
-  // Initialize WebSocket Connection & Capture Loop
+  // Initialize WebSocket Connection & Capture Loop. `engine` in the
+  // dependency array means React tears down and reopens the socket
+  // whenever it changes — that's the whole switching mechanism, no backend
+  // restart involved. Stale detections/engine label are cleared immediately
+  // so the overlay doesn't show the previous engine's boxes while the new
+  // connection (and possibly a first-time model load) is still opening.
   useEffect(() => {
     if (!isStreamActive) return;
 
+    setDetections([]);
+    setActiveEngine(null);
+
+    // Determine WebSocket protocol based on page protocol
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/vision?zone=${zoneId}`;
-    
+    const wsUrl = `${protocol}//${window.location.host}/ws/vision?engine=${encodeURIComponent(engine)}&zone=${encodeURIComponent(zoneId)}`;
+
+
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -62,6 +73,9 @@ export function useVisionWS(isStreamActive = true, zoneId = 1) {
         const data = JSON.parse(event.data);
         if (data && data.detections) {
           setDetections(data.detections);
+        }
+        if (data && data.engine) {
+          setActiveEngine(data.engine);
         }
       } catch (err) {
         console.error("Failed to parse WebSocket message:", err);
@@ -94,7 +108,7 @@ export function useVisionWS(isStreamActive = true, zoneId = 1) {
         ws.close();
       }
     };
-  }, [isStreamActive, zoneId]);
+  }, [isStreamActive, engine, zoneId]);
 
   // Render bounding boxes over HTML5 canvas overlay
   const renderCanvasOverlay = useCallback(() => {
@@ -157,5 +171,6 @@ export function useVisionWS(isStreamActive = true, zoneId = 1) {
     canvasRef,
     wsConnected,
     detections,
+    activeEngine,
   };
 }

@@ -33,12 +33,13 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OLLAMA_HOST=vision_assist_llm_local
-      - POSTGRES_HOST=postgres
+      - POSTGRES_HOST=host.docker.internal
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_DB=${POSTGRES_DB}
       # - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password      
       - YOLO_MODEL_PATH=${YOLO_MODEL_PATH:-}
+      - FINE_TUNED_YOLO_MODEL_PATH=${FINE_TUNED_YOLO_MODEL_PATH:-}
       - VISION_MODEL_TYPE=${VISION_MODEL_TYPE:-yolo}
       - VISION_CUSTOM_CLASSES=${VISION_CUSTOM_CLASSES:-}
       # - STT_PROVIDER=${STT_PROVIDER:-faster-whisper}
@@ -138,6 +139,6 @@ volumes:
 
 secrets:
   postgres_password:
-    file: ./secrets/postgres_password
+    file: ./secrets/postgres_password.txt
   qdrant_api_key:
-    file: ./secrets/qdrant_api_key
+    file: ./secrets/qdrant_api_key.txt

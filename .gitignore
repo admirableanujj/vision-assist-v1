@@ -1,3 +1,7 @@
+# Docker secrets (postgres_password.txt, qdrant_api_key.txt) — CLAUDE.md and
+# .env.example both document this directory as git-ignored; keep it that way.
+secrets/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -218,3 +222,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Docker secrets (postgres_password.txt, qdrant_api_key.txt)
+secrets/

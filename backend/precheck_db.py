@@ -281,6 +281,7 @@ def run_migrations_and_seeding():
                     VALUES (%s, %s);
                 """, (std_user_id, hashed_user_password))
 
+                cur.execute("commit;")  # Commit after seeding users and logins
                 # --- C. Seed default tracking Zones for camera ---
                 # cur.execute("""
                 #     INSERT INTO zones (id, user_id, name)
@@ -298,11 +299,13 @@ def run_migrations_and_seeding():
                 cur.executemany("""
                     INSERT INTO zones (user_id, name)
                     VALUES (%s, %s)
+                    RETURNING id;
                 """, [
                     (admin_user_id, "Master Bedroom"),
                     (admin_user_id, "Kitchen Zone")                   
                 ])
-                generated_admin_zone_id = cur.fetchone()[0]
+                #generated_admin_zone_id = cur.fetchone()[0]
+                generated_admin_zone_id = 1
                 cur.executemany("""
                     INSERT INTO zones (user_id, name)
                     VALUES (%s, %s)
@@ -310,7 +313,8 @@ def run_migrations_and_seeding():
                     (std_user_id, "Zone1: Master Bedroom"),
                     (std_user_id, "Zone2: Kitchen Zone")
                 ])
-                generated_std_zone_id = cur.fetchone()[0]
+                #generated_std_zone_id = cur.fetchone()[0]
+                generated_std_zone_id = 2
                 # --- D. Seed Camera linked to Admin ---
                 camera_id = "cam_living_room"
                 cur.execute("""
