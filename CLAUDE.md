@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 VisionAssist is an AI-powered voice+vision Lost & Found assistant: a FastAPI backend + React/Vite frontend communicating over REST + WebSockets, with real-time object detection (YOLO/YOLOE), speech I/O, and LLM-driven intent handling.
 
-**Entry point:** `backend/main.py` — a FastAPI app (`uvicorn main:app`) that runs DB migrations/seeding on startup (`precheck_db.py`) then serves REST + WebSocket routes.
+**Entry point:** `backend/main.py` — a FastAPI app (`uvicorn main:app`) that runs DB migrations/seeding on startup (`precheck_db.py`) then serves REST + WebSocket routes. `precheck_db.py` creates the full schema if missing and, only when `users` is genuinely empty, seeds `test_user`/`test_user` and `admin`/`adminpassword123` — no manual DB setup is needed to log in.
 
 ## Development Environment
 
@@ -50,27 +50,36 @@ vision-assist-v1/
 ├── backend/                          # FastAPI / ML service domain
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   ├── main.py                       # Entrypoint — wires auth/vision/audio routers
-│   ├── precheck_db.py                # DB migrations + first-boot seeding
+│   ├── main.py                       # Entrypoint — wires auth/vision/audio/zone routers
+│   ├── precheck_db.py                # DB migrations + first-boot seeding (see below)
 │   └── app/
 │       ├── api/                      # HTTP + WebSocket routes
 │       │   ├── vision_routes.py      # /ws/vision — YOLO/YOLOE detection
 │       │   ├── audio_routes.py       # /ws/audio — STT + intent routing
-│       │   └── auth_routes.py        # /api/v1/auth/login
-│       ├── core/                     # Security, logging
+│       │   ├── auth_routes.py        # /api/v1/auth/login
+│       │   └── zone_routes.py        # /api/v1/zones, /items — zone inventory + item registration
+│       ├── core/                     # security.py, database.py, logging_config.py
 │       ├── engines/                  # Vision, voice, and ML/LLM engines
 │       │   ├── vision/               # YOLOVisionEngine + YOLOEVisionEngine + fallback
 │       │   ├── voice/                # Whisper STT + TTS
 │       │   └── ml/                   # Ollama, query classification, CLIP/Qdrant embeddings
-│       └── models/                   # Pydantic schemas
+│       └── models/                   # Pydantic schemas (db_models.py, schemas.py)
 └── frontend/                         # React / Vite SPA
     └── src/
-        ├── App.jsx                   # Main dashboard
+        ├── App.jsx                   # Auth gate; routes to ZoneInventoryDashboard or CameraFeedDashboard
+        ├── pages/
+        │   ├── ZoneInventoryDashboard.jsx  # Default view post-login — zones, registered items
+        │   └── CameraFeedDashboard.jsx     # Live vision feed + YOLO/YOLOE toggle, reached via "Camera Stream"
         ├── components/LoginModal.jsx
         └── hooks/
             ├── useVisionWS.js        # Webcam capture, /ws/vision client, canvas box rendering
             └── useAudioWS.js         # Mic capture, /ws/audio client
 ```
+
+`backend/app/api/router.py` and `chat_routes.py`, `backend/app/core/config.py`, `backend/app/services/`,
+and `frontend/src/App_bkp.jsx` plus `frontend/src/components/{VideoFeed,AudioRecorder,SystemStatus,ContextPanel}.jsx`
+and `frontend/src/services/api.js` all exist but are dead — empty, or never imported by `main.py`/`App.jsx`.
+Don't treat their presence as documentation of intended behavior.
 
 ### Request Flow
 
@@ -88,6 +97,12 @@ Audio: browser mic → useAudioWS.js → WS /ws/audio (webm blob) → audio_rout
   → canned/Ollama response per intent → {"status", "intent", "transcript", "response"}
 
 Auth: LoginModal.jsx → fetch POST /api/v1/auth/login → auth_routes.py → JWT via core/security.py
+
+Zones/items: App.jsx routes a logged-in user to ZoneInventoryDashboard.jsx by
+default → GET /api/v1/zones, /api/v1/items/registered (zone_routes.py, scoped
+to the authenticated user). Clicking "Camera Stream" switches App.jsx's
+activeView to CameraFeedDashboard.jsx (the vision flow above); "Zone
+Inventory" in its header switches back.
 ```
 
 ### Key Design Patterns
