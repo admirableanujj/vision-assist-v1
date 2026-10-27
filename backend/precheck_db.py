@@ -227,9 +227,9 @@ def run_migrations_and_seeding():
         conn.commit()
         logger.info("DB migrations completed successfully.")
 
-        # 3. Seed Initial Base Data
+# 3. Seed Initial Base Data
         with conn.cursor() as cur:
-            # Seed default system roles (using renamed role_description column)
+            # Seed default system roles
             cur.execute("""
                 INSERT INTO roles (id, role_name, role_description)
                 VALUES 
@@ -281,57 +281,43 @@ def run_migrations_and_seeding():
                     VALUES (%s, %s);
                 """, (std_user_id, hashed_user_password))
 
-                cur.execute("commit;")  # Commit after seeding users and logins
-                # --- C. Seed default tracking Zones for camera ---
-                # cur.execute("""
-                #     INSERT INTO zones (id, user_id, name)
-                #     VALUES 
-                #         ( %s, 'Main Living Zone'),
-                #         ( %s, 'Key Hanger Shelf')
-                #     ON CONFLICT DO NOTHING;
-                # """, (admin_user_id, ))
+                # --- C. Seed Zones Safely with RETURNING ---
                 cur.execute("""
                     INSERT INTO zones (user_id, name)
                     VALUES (%s, 'Main Living Zone')
                     RETURNING id;
                 """, (admin_user_id,))
-                # add multiple zones if needed
-                cur.executemany("""
-                    INSERT INTO zones (user_id, name)
-                    VALUES (%s, %s)
-                    RETURNING id;
-                """, [
-                    (admin_user_id, "Master Bedroom"),
-                    (admin_user_id, "Kitchen Zone")                   
-                ])
-                #generated_admin_zone_id = cur.fetchone()[0]
-                generated_admin_zone_id = 1
-                cur.executemany("""
-                    INSERT INTO zones (user_id, name)
-                    VALUES (%s, %s)
-                """, [
-                    (std_user_id, "Zone1: Master Bedroom"),
-                    (std_user_id, "Zone2: Kitchen Zone")
-                ])
-                #generated_std_zone_id = cur.fetchone()[0]
-                generated_std_zone_id = 2
-                # --- D. Seed Camera linked to Admin ---
-                camera_id = "cam_living_room"
+                generated_admin_zone_id = cur.fetchone()[0]
+
                 cur.execute("""
-                    INSERT INTO cameras (id, owner_id, name, source, location, zone_id)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (id) DO UPDATE SET zone_id = EXCLUDED.zone_id;
-                """, (camera_id, admin_user_id, "Living Room Cam", "rtsp://192.168.1.50/stream", "Living Room", generated_admin_zone_id))
-                
+                    INSERT INTO zones (user_id, name)
+                    VALUES (%s, 'Master Bedroom')
+                    RETURNING id;
+                """, (admin_user_id,))
+
+                cur.execute("""
+                    INSERT INTO zones (user_id, name)
+                    VALUES (%s, 'Zone1: Master Bedroom')
+                    RETURNING id;
+                """, (std_user_id,))
+                generated_std_zone_id = cur.fetchone()[0]
+
+                cur.execute("""
+                    INSERT INTO zones (user_id, name)
+                    VALUES (%s, 'Zone2: Kitchen Zone')
+                    RETURNING id;
+                """, (std_user_id,))
+
+                # --- D. Seed Cameras with Unique IDs ---
                 cur.executemany("""
                     INSERT INTO cameras (id, owner_id, name, source, location, zone_id)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET zone_id = EXCLUDED.zone_id;
                 """, [
-                    ("cam_living_room", admin_user_id, "Living Room Cam", "rtsp://192.168.1.50/stream", "Living Room", generated_admin_zone_id),
-                    ("cam_kitchen", admin_user_id, "Kitchen Cam", "rtsp://192.168.1.51/stream", "Kitchen", generated_admin_zone_id),
-                    ("cam_living_room", std_user_id, "Living Room Cam", "rtsp://192.168.1.50/stream", "Living Room", generated_std_zone_id),
-                    ("cam_kitchen", std_user_id, "Kitchen Cam", "rtsp://192.168.1.51/stream", "Kitchen", generated_std_zone_id)
+                    ("cam_admin_living", admin_user_id, "Living Room Cam", "rtsp://192.168.1.50/stream", "Living Room", generated_admin_zone_id),
+                    ("cam_admin_kitchen", admin_user_id, "Kitchen Cam", "rtsp://192.168.1.51/stream", "Kitchen", generated_admin_zone_id),
+                    ("cam_std_living", std_user_id, "Living Room Cam", "rtsp://192.168.1.50/stream", "Living Room", generated_std_zone_id),
+                    ("cam_std_kitchen", std_user_id, "Kitchen Cam", "rtsp://192.168.1.51/stream", "Kitchen", generated_std_zone_id)
                 ])
 
                 logger.info("Default seeding data successfully inserted.")
