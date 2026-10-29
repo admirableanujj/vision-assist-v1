@@ -37,8 +37,8 @@ cp .env.example .env   # fill in OPENAI_API_KEY if using cloud STT
 
 # Secrets: UTF-8, no BOM, no trailing newline (see note below)
 mkdir -p secrets
-printf '%s' 'devpassword123' > secrets/postgres_password.txt
-printf '%s' 'unused-for-now' > secrets/qdrant_api_key.txt
+printf '%s' 'devpassword123' > secrets/postgres_password
+printf '%s' 'unused-for-now' > secrets/qdrant_api_key
 
 # --no-deps skips ollama/qdrant — add them back if you need the voice/LLM path
 docker-compose up -d --build --no-deps backend postgres frontend
@@ -51,8 +51,8 @@ On Windows, create the secrets in PowerShell instead of the `mkdir`/`printf` lin
 # without care: they can write UTF-16 or add a BOM/trailing newline, which
 # corrupts the secret. WriteAllText writes UTF-8 with no BOM and no newline.
 New-Item -ItemType Directory -Path secrets -Force | Out-Null
-[IO.File]::WriteAllText("$PWD\secrets\postgres_password.txt", 'devpassword123')
-[IO.File]::WriteAllText("$PWD\secrets\qdrant_api_key.txt", 'unused-for-now')
+[IO.File]::WriteAllText("$PWD\secrets\postgres_password", 'devpassword123')
+[IO.File]::WriteAllText("$PWD\secrets\qdrant_api_key", 'unused-for-now')
 ```
 
 > **Secret file format:** each file in `secrets/` must be **UTF-8, no BOM,
