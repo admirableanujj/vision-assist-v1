@@ -59,12 +59,18 @@ New-Item -ItemType Directory -Path secrets -Force | Out-Null
 > no trailing newline** — the file's bytes are used verbatim as the
 > password/API key. The `printf '%s'` (bash) and `[IO.File]::WriteAllText`
 > (PowerShell) commands above produce exactly that. Check with
-> `file secrets/*.txt` (expect `ASCII text, with no line terminators`) or, in
-> PowerShell, `Format-Hex secrets\postgres_password.txt` (no leading
+> `file secrets/*` (expect `ASCII text, with no line terminators`) or, in
+> PowerShell, `Format-Hex secrets\postgres_password` (no leading
 > `FF FE`/`EF BB BF`, no trailing `0D 0A`). If Docker ever creates
 > `secrets/postgres_password` or `secrets/qdrant_api_key` as empty
-> **folders**, the `.txt` files were missing at `docker-compose up` — delete
+> **folders**, those files were missing at `docker-compose up` — delete
 > those folders, create the files, and start again.
+
+> **`POSTGRES_HOST`** (set in `.env`) defaults to `vision_assist_db`, which
+> works for plain Docker/Docker Desktop. **In GitHub Codespaces, set it to
+> `host.docker.internal` instead** — direct container-to-container bridge
+> routing was found broken there; see
+> **`docs/TESTING_LOCAL_AND_CODESPACES.md`** for the exact command.
 
 Then open `http://localhost:3000`. For a verified setup walkthrough — local
 or GitHub Codespaces, including test credentials — see

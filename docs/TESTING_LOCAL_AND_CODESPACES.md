@@ -18,10 +18,10 @@ boot (see "DB seeding" below) — no manual DB workaround needed anymore:
 
 ```bash
 cp .env.example .env
-printf '\nPOSTGRES_USER=postgres\nPOSTGRES_DB=vision_assist\n' >> .env
+printf '\nPOSTGRES_USER=postgres\nPOSTGRES_DB=vision_assist\nPOSTGRES_HOST=host.docker.internal\n' >> .env
 mkdir -p secrets
-printf '%s' 'devpassword123' > secrets/postgres_password.txt
-printf '%s' 'unused-for-now' > secrets/qdrant_api_key.txt
+printf '%s' 'devpassword123' > secrets/postgres_password
+printf '%s' 'unused-for-now' > secrets/qdrant_api_key
 
 docker-compose up -d --build --no-deps backend postgres frontend
 docker logs -f vision_assist_api   # wait for "DB migrations completed successfully."
@@ -30,6 +30,12 @@ echo ""
 echo "Open: https://${CODESPACE_NAME}-3000.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
 echo "Login: test_user / test_user"
 ```
+
+`POSTGRES_HOST=host.docker.internal` above is required specifically in
+Codespaces — direct container-to-container bridge DNS (the `.env.example`
+default, `vision_assist_db`) was found broken there; routing through the
+host (`extra_hosts: host-gateway` in `docker-compose.yml`) works instead.
+Plain local Docker doesn't need this override.
 
 Click the printed URL (if the port shows Private and won't load: Ports tab →
 right-click port 3000 → Port Visibility → Public), log in. You'll land on
@@ -82,8 +88,8 @@ cd vision-assist-v1
 cp .env.example .env
 
 mkdir -p secrets
-printf '%s' 'devpassword123' > secrets/postgres_password.txt
-printf '%s' 'unused-for-now' > secrets/qdrant_api_key.txt
+printf '%s' 'devpassword123' > secrets/postgres_password
+printf '%s' 'unused-for-now' > secrets/qdrant_api_key
 ```
 
 On Windows (PowerShell), create the secrets like this instead:
@@ -93,24 +99,27 @@ On Windows (PowerShell), create the secrets like this instead:
 # without care: they can write UTF-16 or add a BOM/trailing newline, which
 # corrupts the secret. WriteAllText writes UTF-8 with no BOM and no newline.
 New-Item -ItemType Directory -Path secrets -Force | Out-Null
-[IO.File]::WriteAllText("$PWD\secrets\postgres_password.txt", 'devpassword123')
-[IO.File]::WriteAllText("$PWD\secrets\qdrant_api_key.txt", 'unused-for-now')
+[IO.File]::WriteAllText("$PWD\secrets\postgres_password", 'devpassword123')
+[IO.File]::WriteAllText("$PWD\secrets\qdrant_api_key", 'unused-for-now')
 ```
 
 > **Secret file format:** each file in `secrets/` must be **UTF-8, no BOM,
 > no trailing newline** — the file's bytes are used verbatim as the
 > password/API key. The `printf '%s'` (bash) and `[IO.File]::WriteAllText`
 > (PowerShell) commands above produce exactly that. Check with
-> `file secrets/*.txt` (expect `ASCII text, with no line terminators`) or, in
-> PowerShell, `Format-Hex secrets\postgres_password.txt` (no leading
+> `file secrets/*` (expect `ASCII text, with no line terminators`) or, in
+> PowerShell, `Format-Hex secrets\postgres_password` (no leading
 > `FF FE`/`EF BB BF`, no trailing `0D 0A`). If Docker ever creates
 > `secrets/postgres_password` or `secrets/qdrant_api_key` as empty
-> **folders**, the `.txt` files were missing at `docker-compose up` — delete
+> **folders**, those files were missing at `docker-compose up` — delete
 > those folders, create the files, and start again.
 
 Edit `.env` and set `POSTGRES_USER=postgres`, `POSTGRES_DB=vision_assist` —
-the password itself comes only from `secrets/postgres_password.txt`
-(`POSTGRES_PASSWORD_FILE` in `docker-compose.yml`), not from `.env`.
+the password itself comes only from `secrets/postgres_password`
+(`POSTGRES_PASSWORD_FILE` in `docker-compose.yml`), not from `.env`. On
+plain local Docker, `POSTGRES_HOST`'s default (`vision_assist_db`) is fine
+as-is — the `host.docker.internal` override above is only needed in
+Codespaces.
 
 Bring up just what vision testing needs — `--no-deps` skips `backend`'s
 `ollama`/`qdrant` dependency check, so you don't need those containers at all:
