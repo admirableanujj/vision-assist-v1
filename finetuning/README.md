@@ -62,10 +62,16 @@ Upload `prepare_dataset.py`, `prepare_coco_forgetting_check.py`, and
 notebook, run top to bottom:
 
 1. Installs `ultralytics==8.4.106` (matches this repo's pin).
-2. Triggers LVIS (~20.7GB) and COCO downloads via one throwaway epoch each
-   — interrupt (Kaggle's stop button) right after each logs its first
-   epoch starting, or let them finish; either way the dataset lands on
-   disk.
+2. Triggers the COCO download first (~20GB, one throwaway epoch —
+   interrupt right after it logs the first epoch starting, or let it
+   finish), then symlinks LVIS's expected image directory to that same
+   download, then triggers LVIS. **Order matters here**: `lvis.yaml`'s own
+   download step independently re-fetches the exact same COCO
+   `train2017`/`val2017` images (~20GB) into a separate `datasets/lvis/`
+   copy if you let it — doubling the download/disk for no reason, since
+   LVIS reuses COCO's images verbatim. Downloading COCO first and
+   symlinking means LVIS's trigger only fetches its own much smaller
+   `lvis-labels-segments.zip`.
 3. Runs `prepare_dataset.py` to build the merged `lostfound.yaml` (48
    classes) — see its module docstring for exactly what it merges.
 4. Runs `prepare_coco_forgetting_check.py` to build the catastrophic-

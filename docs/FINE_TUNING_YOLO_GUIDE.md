@@ -117,9 +117,26 @@ classes' ids above were confirmed directly against Ultralytics' current
 ```python
 from ultralytics import YOLO
 model = YOLO("yolo26n.pt")
-model.train(data="lvis.yaml", epochs=100, imgsz=640)   # auto-downloads ~20.7GB
-model.train(data="coco.yaml", epochs=100, imgsz=640)   # also needed now — see below
+model.train(data="coco.yaml", epochs=100, imgsz=640)   # download COCO's images FIRST — see warning below
+model.train(data="lvis.yaml", epochs=100, imgsz=640)   # then LVIS — needed too, for the annotations
 ```
+
+**Order matters, and don't run these independently.** `lvis.yaml`'s own
+`download:` block fetches COCO's `train2017.zip`(19G)/`val2017.zip`(1G)
+directly into `datasets/lvis/images/` — a second, separate copy of the
+exact same images `coco.yaml` downloads into `datasets/coco/images/`,
+since Ultralytics doesn't dedupe across the two dataset configs even
+though LVIS reuses COCO's JPEGs verbatim. Downloading both independently
+silently doubles the download/disk for zero benefit. Download COCO first,
+then symlink LVIS's expected image directory to that same copy before
+triggering LVIS — `finetuning/01_dataset_prep_and_eda.ipynb` does exactly
+this (Section 8.1 below); `safe_download()` only re-fetches a zip if it's
+missing at that exact path, so through the symlink it finds COCO's zip
+already there and skips straight to LVIS's own much smaller
+`lvis-labels-segments.zip`. This is also the fix if you hit Kaggle's disk
+limit on this step: triggering LVIS before COCO (or independently of it)
+can need ~27GB free for the LVIS step alone, well past what a typical free
+Kaggle session has.
 
 Don't train on all 1,203 LVIS classes, and don't train on all 80 COCO
 classes either — `finetuning/prepare_dataset.py` does both filters: every
@@ -460,7 +477,7 @@ next one to attach as an input, rather than re-doing prior work:
 
 | Notebook | Does | GPU needed? |
 |---|---|---|
-| `finetuning/01_dataset_prep_and_eda.ipynb` | Downloads LVIS+COCO, runs `prepare_dataset.py` + `prepare_coco_forgetting_check.py`, runs `eda.py` (Section 3.3) as a review gate | No |
+| `finetuning/01_dataset_prep_and_eda.ipynb` | Downloads COCO then LVIS (deduped via a symlink, Section 3.1), runs `prepare_dataset.py` + `prepare_coco_forgetting_check.py`, runs `eda.py` (Section 3.3) as a review gate | No |
 | `finetuning/02_train.ipynb` | Trains, checkpoint/resume-aware (Section 8.2) | Yes |
 | `finetuning/03_evaluate_finetune_checks.ipynb` | Pass 1 of Section 7 — the fine-tuning-specific gate | No (CPU inference is fine for eval) |
 
