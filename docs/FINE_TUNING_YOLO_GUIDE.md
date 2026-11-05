@@ -1,8 +1,8 @@
 # Fine-Tuning YOLO26n: Plan
 
 **Status: implementation ready, not yet run.** The dataset-prep script,
-Kaggle training notebook, and three-way eval harness described below exist
-in `finetuning/` (see `finetuning/README.md` for exact run steps) — but no
+the three Kaggle notebooks, and the eval harness described below exist in
+`finetuning/` (see `finetuning/README.md` for exact run steps) — but no
 training job has actually been executed: no dataset downloaded, no
 checkpoint produced, nothing merged into the app's deployed weights.
 
@@ -107,7 +107,7 @@ silently dropped):
 
 ## 3. Datasets
 
-### Primary: LVIS (recommended)
+### 3.1 Primary: LVIS (recommended)
 
 **LVIS** (Large Vocabulary Instance Segmentation, Facebook AI Research) — 1,203
 classes over ~160K images, built on COCO's own image set. All 28 novel
@@ -137,7 +137,7 @@ hundreds to low-thousands of instances; rarer ones (`tape measure`,
 `prepare_dataset.py` first and read its printed per-source counts before
 assuming any class needs a fallback.
 
-### Fallback: Roboflow Universe (per-class, if LVIS counts are too sparse for a given class)
+### 3.2 Fallback: Roboflow Universe (per-class, if LVIS counts are too sparse for a given class)
 
 Open Roboflow Universe and search for the specific class by name — don't
 trust any specific dataset name/count cited in an older version of this
@@ -150,6 +150,33 @@ community dataset: deduplication, class-ID remapping to this project's
 each source's own split (`prepare_dataset.py` already re-splits its own
 LVIS+COCO merge this way; a Roboflow addition needs the same treatment
 manually).
+
+### 3.3 EDA — per-class instance counts, run before training
+
+`prepare_dataset.py` only ever prints **image**-level counts — how many
+images matched each source, how many overlapped. It never reports how
+many box **instances** of each of the 48 classes actually survived the
+merge, and those aren't the same thing: a class can appear in plenty of
+images while still having very few boxes (one small object in a crowded
+scene). `finetuning/eda.py` closes that gap — pure counting over the
+label files `prepare_dataset.py` already wrote, no GPU needed:
+
+```bash
+python eda.py --dataset-dir ./lostfound --output-dir ./eda_report --imbalance-floor 50
+```
+
+Produces `class_distribution.csv` (every class, train/val/total instance
+counts), `class_distribution.png` (sorted bar chart, kept-COCO vs. novel
+color-coded), and `eda_summary.json` (totals, min/max instance counts, an
+imbalance ratio, and two explicit flags: classes with **zero** instances —
+training will never learn these at all — and classes under the
+instance-count floor). `finetuning/01_dataset_prep_and_eda.ipynb` runs this
+as a review gate immediately after building the merged dataset, before any
+training happens: review the flagged classes and decide — raise
+`--coco-sample-size`, add a Section 3.2 Roboflow fallback for a specific
+sparse novel class, or accept and note the limitation — rather than
+discovering a class never learned anything from a confusing eval result
+after spending GPU time.
 
 ## 4. Fine-tuning mechanics
 
@@ -247,12 +274,25 @@ Section 7, built automatically by the separate
 since it's just filtering/remapping COCO's own existing ground truth, the
 same operation applied to `val2017` instead of `train2017`).
 
-## 7. Evaluation plan — the three-way comparison
+## 7. Evaluation plan — two passes, not one
 
-The actual goal isn't just "fine-tune a model" — it's a defensible three-way
-comparison: **base YOLO26n** (structurally can't detect any of the 28 novel
-classes) vs. **YOLOE zero-shot** (already shipped, prompted with the same 28)
-vs. **fine-tuned YOLO26n** (this plan).
+Two genuinely different checks, run in sequence — not interchangeable, and
+not combined into one step:
+
+- **Pass 1 — fine-tuning-specific gate.** Fast, Kaggle, no new photography,
+  runs immediately after training in `finetuning/03_evaluate_finetune_checks.ipynb`:
+  did this run actually learn the 28 novel classes, and did it regress the
+  20 kept classes (catastrophic forgetting, Section 6)? This has to pass
+  *before* investing in golden-set photography/annotation — there's no
+  point capturing 300-400 images against a checkpoint that didn't train
+  properly.
+- **Pass 2 — the real three-way benchmark.** Needs the self-captured golden
+  set (Section 7.2 below), usually run locally via `finetuning/evaluate.py`:
+  **base YOLO26n** (structurally can't detect any of the 28 novel classes)
+  vs. **YOLOE zero-shot** (already shipped, prompted with the same 28) vs.
+  **fine-tuned YOLO26n** (this plan) — all three scored on the *exact same*
+  images, which is what makes it a real benchmark rather than three
+  separate, incomparable numbers.
 
 ### 7.1 Metrics
 
@@ -404,7 +444,47 @@ without it). Session length cap is reported inconsistently across sources
 current limit in Kaggle's own notebook settings at creation time rather than
 assuming either number. For a nano model on a low-thousands-of-images merged
 dataset, expect roughly 1–3 hours for 50–100 epochs on a single T4, comfortably
-inside either cap.
+inside either cap — but the plan below doesn't depend on fitting inside one
+session, because it doesn't have to.
+
+### 8.1 Three notebooks, not one — and why
+
+`finetuning/train_kaggle.ipynb` (an earlier, single monolithic notebook —
+download, merge, EDA, train, eval, all in one run) is gone. A single long
+cell is fragile against Kaggle's session cap for no benefit: losing it
+mid-training meant re-downloading LVIS (~20.7GB) from scratch, and there
+was no checkpoint/resume path at all. It's replaced by three notebooks that
+each commit their own Output (Kaggle's versioned-dataset mechanism) for the
+next one to attach as an input, rather than re-doing prior work:
+
+| Notebook | Does | GPU needed? |
+|---|---|---|
+| `finetuning/01_dataset_prep_and_eda.ipynb` | Downloads LVIS+COCO, runs `prepare_dataset.py` + `prepare_coco_forgetting_check.py`, runs `eda.py` (Section 3.3) as a review gate | No |
+| `finetuning/02_train.ipynb` | Trains, checkpoint/resume-aware (Section 8.2) | Yes |
+| `finetuning/03_evaluate_finetune_checks.ipynb` | Pass 1 of Section 7 — the fine-tuning-specific gate | No (CPU inference is fine for eval) |
+
+This also means a training interruption only costs re-running `02_train.ipynb`
+against `01`'s already-committed output — not re-downloading LVIS.
+
+### 8.2 Checkpoint / resume across session cutoffs
+
+Ultralytics writes `weights/last.pt` after every completed epoch during
+`model.train()` — that part is automatic and needs no extra code. What
+Kaggle doesn't do automatically is keep `/kaggle/working` around after a
+session ends; it only survives if you commit it. The runbook, also inlined
+in `02_train.ipynb` itself:
+
+1. If the session clock is running low, **interrupt the training cell**
+   (Stop button) rather than letting Kaggle kill it — whatever epoch last
+   completed is already on disk.
+2. **File → Save Version** — commits `/kaggle/working` (including
+   `runs/lostfound_yolo26n/`) as this notebook's Output, which becomes a
+   Kaggle Dataset.
+3. Next session: open a fresh copy of `02_train.ipynb`, **Add Data** → that
+   previous Output version, set the notebook's `RESUME = True` flag and
+   point `PREVIOUS_RUN_DIR` at it, re-run from the top. `model.train(resume=True)`
+   continues from `last.pt`'s saved epoch + optimizer state — training does
+   **not** restart from `yolo26n.pt`.
 
 ## 9. Code changes needed in this repo once this is executed
 

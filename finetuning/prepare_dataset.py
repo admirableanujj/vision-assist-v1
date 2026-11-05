@@ -231,7 +231,7 @@ def copy_subset(merged: dict, out_images: Path, out_labels: Path, val_fraction: 
     """Writes the final merged candidate set into out_images/{train,val}
     and out_labels/{train,val}, assigning the split fresh here rather than
     trusting either source dataset's own split (FINE_TUNING_YOLO_GUIDE.md
-    Section 3's "re-split after merging" guidance)."""
+    Section 3.2's "re-split after merging" guidance)."""
     items = list(merged.items())
     rng.shuffle(items)
     n_val = max(1, int(len(items) * val_fraction))
@@ -316,9 +316,11 @@ def main():
     print(f"\nDone. {total} images total, {len(LOSTFOUND_CLASS_NAMES)} classes. Wrote {args.output_dir / 'lostfound.yaml'}.")
     print(
         "Before training: spot-check ~50-100 of the copied images against their .txt "
-        "labels (annotation-quality check from FINE_TUNING_YOLO_GUIDE.md Section 3) — "
+        "labels (annotation-quality check from FINE_TUNING_YOLO_GUIDE.md Section 3.2) — "
         "this script does the mechanical filter/remap/merge correctly, but it cannot "
-        "verify LVIS's/COCO's own box quality for you."
+        "verify LVIS's/COCO's own box quality for you. Also run eda.py against "
+        f"{args.output_dir} next — it reports per-class INSTANCE counts (this script only "
+        "ever reported image counts above), which is what actually reveals class imbalance."
     )
 
 
