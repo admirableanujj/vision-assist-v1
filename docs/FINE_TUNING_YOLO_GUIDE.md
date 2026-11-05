@@ -133,10 +133,36 @@ triggering LVIS — `finetuning/01_dataset_prep_and_eda.ipynb` does exactly
 this (Section 8.1 below); `safe_download()` only re-fetches a zip if it's
 missing at that exact path, so through the symlink it finds COCO's zip
 already there and skips straight to LVIS's own much smaller
-`lvis-labels-segments.zip`. This is also the fix if you hit Kaggle's disk
-limit on this step: triggering LVIS before COCO (or independently of it)
-can need ~27GB free for the LVIS step alone, well past what a typical free
-Kaggle session has.
+`lvis-labels-segments.zip`. This cuts the peak disk roughly in half, but
+doesn't fully explain a "27GB required" error on Kaggle by itself — a
+single COCO download alone needs about that much (19G+1G zips plus
+extraction headroom), which is already more than fits in
+`/kaggle/working`'s ~20GB persisted-output quota. The real fix for that is
+separate and more fundamental: redirect Ultralytics' `datasets_dir` away
+from `/kaggle/working` (its default — see Section 3.1.1 below) before
+triggering either download.
+
+#### 3.1.1 On Kaggle specifically: redirect `datasets_dir` out of `/kaggle/working`
+
+Ultralytics defaults `datasets_dir` to `<cwd>/datasets` whenever it finds
+no git repo (`ultralytics/utils/__init__.py`'s `SettingsManager.__init__`)
+— on a Kaggle notebook that resolves to `/kaggle/working/datasets`, which
+is the ~20GB quota reserved for this notebook's *persisted, committed
+Output*, not a measure of the container's actual disk. `/kaggle/tmp` is
+the standard Kaggle scratch path for large, ephemeral downloads that don't
+need to survive past the session — which is exactly what the raw
+LVIS/COCO source data is; only the small, curated `lostfound/`/
+`coco_forgetting_check/`/`eda_report/` outputs need to persist as this
+notebook's committed Output. `finetuning/01_dataset_prep_and_eda.ipynb`
+redirects it before any download is triggered:
+
+```python
+from pathlib import Path
+from ultralytics import settings
+
+Path("/kaggle/tmp/datasets").mkdir(parents=True, exist_ok=True)
+settings.update(datasets_dir="/kaggle/tmp/datasets")
+```
 
 Don't train on all 1,203 LVIS classes, and don't train on all 80 COCO
 classes either — `finetuning/prepare_dataset.py` does both filters: every

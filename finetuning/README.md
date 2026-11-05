@@ -62,7 +62,12 @@ Upload `prepare_dataset.py`, `prepare_coco_forgetting_check.py`, and
 notebook, run top to bottom:
 
 1. Installs `ultralytics==8.4.106` (matches this repo's pin).
-2. Triggers the COCO download first (~20GB, one throwaway epoch —
+2. Redirects Ultralytics' `datasets_dir` to `/kaggle/tmp` — its default
+   (`/kaggle/working/datasets`) sits inside the ~20GB quota reserved for
+   this notebook's *persisted Output*, which a single COCO download alone
+   can exceed (Guide Section 3.1.1). Only the small, curated outputs need
+   to persist — the raw LVIS/COCO source data doesn't.
+3. Triggers the COCO download first (~20GB, one throwaway epoch —
    interrupt right after it logs the first epoch starting, or let it
    finish), then symlinks LVIS's expected image directory to that same
    download, then triggers LVIS. **Order matters here**: `lvis.yaml`'s own
@@ -72,17 +77,17 @@ notebook, run top to bottom:
    LVIS reuses COCO's images verbatim. Downloading COCO first and
    symlinking means LVIS's trigger only fetches its own much smaller
    `lvis-labels-segments.zip`.
-3. Runs `prepare_dataset.py` to build the merged `lostfound.yaml` (48
+4. Runs `prepare_dataset.py` to build the merged `lostfound.yaml` (48
    classes) — see its module docstring for exactly what it merges.
-4. Runs `prepare_coco_forgetting_check.py` to build the catastrophic-
+5. Runs `prepare_coco_forgetting_check.py` to build the catastrophic-
    forgetting eval set from COCO `val2017`'s own existing ground truth
    (fully automatic, no annotation needed).
-5. Runs `eda.py` (Guide Section 3.3) and displays the resulting chart +
+6. Runs `eda.py` (Guide Section 3.3) and displays the resulting chart +
    summary inline. **Review this before continuing** — zero-instance or
    severely under-represented classes should be fixed (raise
    `--coco-sample-size`, or add a Roboflow fallback for a specific sparse
    novel class, Guide Section 3.2) before spending any GPU time.
-6. **File → Save Version** — commits `lostfound/`, `coco_forgetting_check/`,
+7. **File → Save Version** — commits `lostfound/`, `coco_forgetting_check/`,
    and `eda_report/` as this notebook's Output.
 
 ### 2. `02_train.ipynb` — train on Kaggle GPU (checkpoint/resume-aware)
