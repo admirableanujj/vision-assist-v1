@@ -450,7 +450,8 @@ session, because it doesn't have to.
 ### 8.1 Three notebooks, not one — and why
 
 `finetuning/train_kaggle.ipynb` (an earlier, single monolithic notebook —
-download, merge, EDA, train, eval, all in one run) is gone. A single long
+download, merge, train, eval, all in one run, with no EDA step at all) is
+gone. A single long
 cell is fragile against Kaggle's session cap for no benefit: losing it
 mid-training meant re-downloading LVIS (~20.7GB) from scratch, and there
 was no checkpoint/resume path at all. It's replaced by three notebooks that
