@@ -153,15 +153,39 @@ the standard Kaggle scratch path for large, ephemeral downloads that don't
 need to survive past the session — which is exactly what the raw
 LVIS/COCO source data is; only the small, curated `lostfound/`/
 `coco_forgetting_check/`/`eda_report/` outputs need to persist as this
-notebook's committed Output. `finetuning/01_dataset_prep_and_eda.ipynb`
-redirects it before any download is triggered:
+notebook's committed Output.
+
+**A plain `settings.update(datasets_dir=...)` is not enough** — confirmed
+by an actual run that still errored identically after calling it. By the
+time that runs, `ultralytics` has already been imported once (the
+`!pip install`/`ultralytics.checks()` cell), which already executed
+`DATASETS_DIR = Path(SETTINGS["datasets_dir"])` as a plain module-level
+constant in `ultralytics.utils` — and `ultralytics/data/utils.py` (where
+`check_det_dataset()` actually resolves download paths) has its **own**
+separately-bound copy via `from ultralytics.utils import DATASETS_DIR`.
+Updating the settings dict afterward changes neither already-bound name;
+`settings["datasets_dir"]` correctly reports the new path while the real
+download code keeps using the stale one. `finetuning/01_dataset_prep_and_eda.ipynb`
+instead patches `settings.json` on disk directly, then force-reimports
+every `ultralytics.*` module so `DATASETS_DIR` gets recomputed everywhere
+it was bound — with an assertion that fails immediately if it didn't work,
+rather than discovering that two minutes into a download attempt:
 
 ```python
+import json, sys
 from pathlib import Path
-from ultralytics import settings
+from ultralytics.utils import SETTINGS_FILE
 
 Path("/kaggle/tmp/datasets").mkdir(parents=True, exist_ok=True)
-settings.update(datasets_dir="/kaggle/tmp/datasets")
+settings_data = json.loads(Path(SETTINGS_FILE).read_text())
+settings_data["datasets_dir"] = "/kaggle/tmp/datasets"
+Path(SETTINGS_FILE).write_text(json.dumps(settings_data, indent=4))
+
+for mod_name in [m for m in sys.modules if m == "ultralytics" or m.startswith("ultralytics.")]:
+    del sys.modules[mod_name]
+
+from ultralytics.data.utils import DATASETS_DIR
+assert str(DATASETS_DIR) == "/kaggle/tmp/datasets"
 ```
 
 Don't train on all 1,203 LVIS classes, and don't train on all 80 COCO
