@@ -1,5 +1,5 @@
 {
-  "id": "dceshubh/vision-assist-02-train",
+  "id": "dceshubh/visionassist-02-train",
   "title": "VisionAssist 02 - Train",
   "code_file": "02_train.ipynb",
   "language": "python",
@@ -10,6 +10,6 @@
   "enable_tpu": false,
   "dataset_sources": [],
   "competition_sources": [],
-  "kernel_sources": ["dceshubh/vision-assist-01-dataset-prep-eda"],
+  "kernel_sources": ["dceshubh/visionassist-01-dataset-prep-eda"],
   "model_sources": []
 }
