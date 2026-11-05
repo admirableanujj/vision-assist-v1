@@ -164,3 +164,37 @@ Section 7.4.
 ### 5. Wire the checkpoint into the app
 
 Per Guide Section 9: host `best.pt` somewhere the backend container can fetch it at build time (Hugging Face Hub recommended — don't commit a `.pt` via normal git), add a download `RUN` step to `backend/Dockerfile` mirroring the existing weight pre-downloads, then set `FINE_TUNED_YOLO_MODEL_PATH` (not the shared `YOLO_MODEL_PATH` — see `CLAUDE.md`'s Key Design Patterns) in `docker-compose.yml`'s `backend` service. No application code changes needed beyond that.
+
+## Updating notebooks on Kaggle without re-uploading
+
+`finetuning/kaggle/` has a `kaggle kernels push`/`kaggle datasets version`
+setup (one folder per notebook, plus one for the three `.py` scripts) so
+edits here can be pushed straight to your existing Kaggle kernels from the
+CLI instead of re-uploading through the browser each time. Each folder's
+notebook/script is a symlink back to the real file in `finetuning/` — edit
+the real file, the symlink picks it up automatically. One-time setup:
+`pip install kaggle`, create an API token (kaggle.com → Settings → API →
+Create New Token), save it to `~/.kaggle/kaggle.json` (`chmod 600`). Then,
+after replacing `<kaggle-username>` in every `kernel-metadata.json`/
+`dataset-metadata.json` under `finetuning/kaggle/` with your actual Kaggle
+username:
+
+```bash
+# First time only — creates the dataset/kernels on Kaggle
+kaggle datasets create -p finetuning/kaggle/scripts-dataset
+kaggle kernels push -p finetuning/kaggle/01-dataset-prep-eda
+kaggle kernels push -p finetuning/kaggle/02-train
+kaggle kernels push -p finetuning/kaggle/03-evaluate-finetune-checks
+
+# Every update after that
+kaggle datasets version -p finetuning/kaggle/scripts-dataset -m "describe the change"
+kaggle kernels push -p finetuning/kaggle/01-dataset-prep-eda
+# (same push command for 02-train / 03-evaluate-finetune-checks whenever those change)
+```
+
+`01-dataset-prep-eda/kernel-metadata.json`'s `dataset_sources` already
+points at the scripts dataset; `02-train`'s and `03-evaluate-finetune-checks`'s
+`kernel_sources` already point at the upstream notebooks' kernel slugs — so
+once the usernames are filled in, `kaggle kernels push` keeps those
+attachments wired automatically on every future push, no manual "Add Data"
+click needed again after the very first push of each.

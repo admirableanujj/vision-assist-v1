@@ -1,0 +1,15 @@
+{
+  "id": "<kaggle-username>/vision-assist-02-train",
+  "title": "VisionAssist 02 - Train",
+  "code_file": "02_train.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "enable_tpu": false,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": ["<kaggle-username>/vision-assist-01-dataset-prep-eda"],
+  "model_sources": []
+}

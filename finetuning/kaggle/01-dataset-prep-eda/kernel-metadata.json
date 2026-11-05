@@ -1,0 +1,15 @@
+{
+  "id": "<kaggle-username>/vision-assist-01-dataset-prep-eda",
+  "title": "VisionAssist 01 - Dataset Prep + EDA",
+  "code_file": "01_dataset_prep_and_eda.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": true,
+  "enable_tpu": false,
+  "dataset_sources": ["<kaggle-username>/vision-assist-finetuning-scripts"],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

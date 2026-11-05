@@ -1,0 +1,18 @@
+{
+  "id": "<kaggle-username>/vision-assist-03-evaluate-finetune-checks",
+  "title": "VisionAssist 03 - Evaluate Fine-tune Checks",
+  "code_file": "03_evaluate_finetune_checks.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": true,
+  "enable_tpu": false,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [
+    "<kaggle-username>/vision-assist-01-dataset-prep-eda",
+    "<kaggle-username>/vision-assist-02-train"
+  ],
+  "model_sources": []
+}
