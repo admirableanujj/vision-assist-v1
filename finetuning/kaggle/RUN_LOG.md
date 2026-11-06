@@ -8,6 +8,34 @@ the ones that worked.
 
 ---
 
+## Notebook 2 — `02_train.ipynb`
+
+Never run before this section. Uses Kaggle's ~30 GPU-hr/week free quota
+(T4/P100) — unlike notebook 1, a wrong assumption here costs real GPU time,
+not just wall-clock, so cell 1's `/kaggle/input` diagnostic listing and cell
+4's `DATA_YAML.exists()` assert (both already in place before this section's
+first attempt) are the fail-fast gate: if `INPUT_DATA_DIR`'s mount-path
+guess is wrong, this should fail within the first minute of GPU session
+time, not after any epochs run. `kernel_sources` (another kernel's
+committed Output, attached as an input) was flagged as unverified — never
+actually confirmed to follow the same `/kaggle/input/datasets/<owner>/<slug>/`
+convention `dataset_sources` uses (notebook 1, attempts 7-9), or the flatter
+`/kaggle/input/<slug>/` the notebook's placeholder code originally assumed.
+
+Added before the first attempt: `cls_pw=0.5` in the training call (class-
+imbalance loss reweighting — see `docs/FINE_TUNING_YOLO_GUIDE.md` Section 4
+for the full rationale, verified against the pinned `ultralytics==8.4.106`
+wheel's actual `compute_class_weights()` source, not assumed).
+
+### Attempt 1 — kernel version 1 — 2026-11-06 (pending)
+
+- **Trigger:** first-ever run, with `cls_pw=0.5` added and GPU accelerator
+  enabled (`kernel-metadata.json`'s `enable_gpu: true`, already set).
+- **Status:** pending — monitoring closely for the mount-path question
+  above before any GPU-hours are spent on actual epochs.
+
+---
+
 ## Notebook 1 — `01_dataset_prep_and_eda.ipynb`
 
 ### Upfront review pass — 2 parallel agents, before attempt 9 — 2026-11-05
