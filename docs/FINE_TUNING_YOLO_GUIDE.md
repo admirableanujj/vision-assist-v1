@@ -569,6 +569,20 @@ in `02_train.ipynb` itself:
    continues from `last.pt`'s saved epoch + optimizer state — training does
    **not** restart from `yolo26n.pt`.
 
+**Known limitation: this runbook assumes a human is watching.** This
+project's actual workflow (see `finetuning/kaggle/RUN_LOG.md`) is 100%
+unattended `kaggle kernels push` — nobody is watching the session clock to
+interrupt step 1 or click Save Version in step 2. An API-triggered run that
+times out or errors on Kaggle's own session cap does not commit a new
+Output version, so none of `last.pt`'s progress survives, and `RESUME`
+can never actually be exercised in this workflow even though the
+mechanism itself is correct. Low risk at the estimated 1-3hr runtime
+(Section 8, comfortably under the cap) — but if a real run ever
+approaches the cap, the practical fix is to watch it via
+`kaggle kernels logs -f` and manually stop it (from the kernel's page on
+kaggle.com) well before the cap, not rely on this runbook triggering
+itself.
+
 ## 9. Code changes needed in this repo once this is executed
 
 `app/engines/vision/vision_engine.py` already resolves `YOLOVisionEngine`'s

@@ -10,11 +10,92 @@ the ones that worked.
 
 ## Notebook 1 — `01_dataset_prep_and_eda.ipynb`
 
-### Attempt 6 — kernel version 6 — 2026-11-05 (pending)
+### Upfront review pass — 2 parallel agents, before attempt 9 — 2026-11-05
 
-- **Trigger:** `kaggle kernels push` after filling in the `SCRIPTS_INPUT_DIR`
-  placeholder (see attempt 5's entry) — my own oversight, not a design bug.
-- **Status:** pending.
+User explicitly asked for proactive agent review instead of continuing to
+iterate reactively push-by-push. Two agents ran in parallel: one re-auditing
+notebook 1 adversarially for the same bug classes already hit, one auditing
+notebooks 2/3 (never run even once) before they could cost their own cycles.
+Real findings, both verified against actual pinned-library source before
+fixing (not taken on faith):
+
+- **[Would have broken 02/03's first run, deterministically]**
+  `prepare_dataset.py`/`prepare_coco_forgetting_check.py` baked an absolute
+  `path: /kaggle/working/...` into the generated yaml. Verified directly
+  against the actual `ultralytics==8.4.106` wheel: `check_det_dataset()`
+  uses an absolute `path:` verbatim regardless of whether it exists, and
+  only falls back to the yaml's own directory when `path:` is absent
+  entirely. Notebook 1 writes these yamls under `/kaggle/working/`;
+  notebooks 2/3 read them back from a different mount
+  (`/kaggle/input/...`) — the baked-in path would 404 inside
+  `model.train()`/`model.val()`. Fixed by dropping `path:` entirely from
+  both yaml-writers.
+- **[Real, silent performance bug]** `find_candidates()` re-globbed the
+  *entire* images directory (118,287 files for COCO `train2017`) on every
+  single candidate lookup — O(candidates × dir_size), same bug class as the
+  earlier `model.train()` incident: looks cheap, isn't. Fixed with a
+  one-time per-directory index.
+- **[Design gap, not yet triggered]** `02_train.ipynb`'s session-overrun
+  recovery runbook assumes a human watching to interrupt/Save Version —
+  this project's actual workflow (confirmed against this very log) is
+  100% unattended `kaggle kernels push`. If a real 100-epoch training run
+  ever approaches the session cap, nobody's there to save progress, and an
+  errored/timed-out batch run doesn't commit an Output version — so the
+  otherwise-correct RESUME mechanism can never actually be exercised.
+  Documented as a known limitation; not fixed (low risk at the
+  estimated 1-3hr runtime, well under the cap).
+- **[Cost footgun, not yet triggered]** No `torch.cuda.is_available()`
+  assertion before `02_train.ipynb`'s real training call — if GPU
+  provisioning silently degrades, `epochs=100` could silently run on CPU
+  for the full schedule.
+- Minor: neither prep script's output dir was idempotent (no `rmtree`
+  before writing) and neither `!python`/`!pip` call checked exit codes
+  anywhere in notebook 1 — fixed both (exit-code `assert`s after all three
+  `!python` cells; `rmtree(ignore_errors=True)` at the top of both scripts'
+  `main()`).
+- Minor: `coco.yaml`/`lvis.yaml`'s `download:` default to `delete=False`
+  (verified against GitHub source), so both COCO zips are left on disk
+  after extraction — real footprint closer to 40GB, not the ~20GB this
+  notebook's own markdown assumed. Added explicit cleanup.
+
+Both agents' full reports are preserved in this session's transcript, not
+duplicated here — this is the condensed, action-oriented version.
+
+### Attempt 9 — kernel version 9 — 2026-11-05 (in progress)
+
+- **Trigger:** `kaggle kernels push` with the full fix set above, plus a
+  real bug found live (not by either agent, since neither had Kaggle
+  access): see attempt 7's entry below for the mount-path discovery.
+- **Status:** running — script-copy step (now reordered before the
+  download, confirmed working in ~30s via `kaggle kernels logs -f`
+  immediately after push, rather than waiting ~20min to find out) and
+  COCO download both confirmed progressing normally.
+
+### Attempts 7-8 — kernel versions 7-8 — 2026-11-05
+
+- **Trigger:** v7 added a fast `/kaggle/input` diagnostic cell
+  (`ls -la /kaggle/input/`) as the very first executable cell, pushed and
+  checked within ~20 seconds via `kaggle kernels logs -f` — **deliberately
+  not waiting through another ~20min COCO download just to check one
+  fact.**
+- **Finding:** `/kaggle/input/` contained only `datasets/dceshubh/...` —
+  **API-attached `dataset_sources` mount at
+  `/kaggle/input/datasets/<owner>/<slug>/`, not the flatter
+  `/kaggle/input/<slug>/`** that manual "Add Data" attachment uses (and
+  that both attempts 5 and 6 had assumed). This is a genuinely different,
+  undocumented-in-this-repo mount convention — not something either
+  review agent could have caught without live Kaggle access, since it's a
+  platform behavior, not a code bug.
+- **Fix applied (v8):** corrected `SCRIPTS_INPUT_DIR` to
+  `/kaggle/input/datasets/dceshubh/vision-assist-finetuning-scripts`.
+  v8 was pushed, then immediately superseded by v9 once the upfront-review
+  findings above landed in the same session — never separately confirmed
+  end-to-end on its own, but its one fix carried forward into v9.
+- **Open question for notebooks 2/3:** `kernel_sources` (another kernel's
+  *output*, as opposed to a dataset) may follow a different mount
+  convention than `dataset_sources` — not yet verified, since 02/03 have
+  never been pushed. Don't assume `/kaggle/input/visionassist-01-dataset-prep-eda`
+  is correct without the same kind of fast diagnostic check first.
 
 ### Attempt 5 — kernel version 5 — 2026-11-05
 
