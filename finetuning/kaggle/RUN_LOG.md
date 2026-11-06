@@ -27,12 +27,66 @@ imbalance loss reweighting — see `docs/FINE_TUNING_YOLO_GUIDE.md` Section 4
 for the full rationale, verified against the pinned `ultralytics==8.4.106`
 wheel's actual `compute_class_weights()` source, not assumed).
 
-### Attempt 1 — kernel version 1 — 2026-11-06 (pending)
+### Attempt 1 — kernel version 2 — 2026-11-06 — ❌ FAILED (fast, no real epochs — see root cause below)
 
 - **Trigger:** first-ever run, with `cls_pw=0.5` added and GPU accelerator
   enabled (`kernel-metadata.json`'s `enable_gpu: true`, already set).
-- **Status:** pending — monitoring closely for the mount-path question
-  above before any GPU-hours are spent on actual epochs.
+- **Good news first:** the mount-path question above is now resolved and
+  did NOT need a fix — `kernel_sources` mounts flat at
+  `/kaggle/input/<slug>/` (confirmed live: `/kaggle/input/visionassist-01-dataset-prep-eda/...`),
+  **not** the deeper `/kaggle/input/datasets/<owner>/<slug>/` convention
+  `dataset_sources` uses. `INPUT_DATA_DIR`'s original guess was correct.
+  GPU was genuinely attached (Tesla T4, confirmed in the trainer's own
+  log line), and `cls_pw=0.5` was confirmed present in the live
+  `engine/trainer:` args dump.
+- **Real failure, but caught in under a minute, before any epoch ran:**
+  `RuntimeError: Dataset '.../lostfound/lostfound.yaml' error ❌ ... images
+  not found, missing path '/kaggle/working/lostfound/images/val'`. The
+  generated yaml still had a baked-in absolute `path: /kaggle/working/...`
+  key — exactly the showstopper bug the upfront review pass (notebook 1,
+  before attempt 9) supposedly fixed by removing `path:` entirely.
+- **Root cause, traced all the way down — a process bug, not a code
+  bug:** `prepare_dataset.py`/`prepare_coco_forgetting_check.py` live in
+  this repo at `finetuning/`, but Kaggle notebooks don't read them from
+  git — they read them from a **separate Kaggle Dataset**
+  (`dceshubh/vision-assist-finetuning-scripts`) that notebook 1's cell 4
+  copies in from `/kaggle/input/datasets/.../`. That dataset is pushed
+  with its own command, `kaggle datasets version`, entirely separate
+  from `kaggle kernels push` (which only updates the *notebook* file).
+  Checked directly: `kaggle datasets files dceshubh/vision-assist-finetuning-scripts`
+  showed `lastUpdated: 2026-11-05 18:16:33` — **before** the upfront
+  review pass added the path-key removal, the `_build_image_index()`
+  O(dir_size) fix, idempotency, and later the `-u`/progress-print work.
+  Diffing the live dataset's actual file contents against git confirmed
+  it: the deployed `prepare_dataset.py` still had the old `_find_image()`
+  (re-globbing per candidate, not cached) and `rglob`, and both deployed
+  scripts still wrote the `path:` key verbatim. **Every notebook-1 run
+  from attempt 9 through attempt 13 — including the one reported as
+  succeeding — actually ran on these stale, pre-fix scripts the whole
+  time.** `kaggle kernels push` for the notebook was re-run every attempt;
+  `kaggle datasets version` for the scripts was not, after its first push.
+- **This also retroactively corrects attempt 13's write-up below:** the
+  "LVIS scan ~34.5min / COCO scan ~157min, both genuinely slow but
+  working" conclusion was real in the sense that neither was hung, but
+  the *reason* it was that slow was most likely the never-actually-fixed
+  O(candidates × dir_size) re-globbing bug (82,255 COCO candidates ×
+  ~118K-file directory ≈ 9.7B comparisons), not "real COCO data is just
+  denser than the synthetic benchmark" as reasoned at the time. The
+  `-u` fix and the in-kernel ground-truth diagnostic cell were real and
+  correct; they just weren't being exercised against the code they were
+  written to validate.
+- **Fix:** `kaggle datasets version -p finetuning/kaggle/scripts-dataset`
+  run directly against the current (actually-fixed) scripts, confirmed
+  `ready` via `kaggle datasets status`. Notebook 1 re-pushed as kernel
+  version 14 to regenerate `lostfound/`, `coco_forgetting_check/`,
+  `eda_report/` with the real fixes finally live — expected to also run
+  dramatically faster than attempt 13's ~3.4 hours, since the O(dir_size)
+  fix should actually take effect this time.
+- **GPU cost of this failure: minimal** — caught before any epoch ran,
+  roughly a minute of T4 time. The real cost is needing to redo notebook
+  1 (CPU only, no GPU quota spent) before notebook 2 can retry.
+- **Status:** superseded — waiting on notebook 1 attempt 14 (real fix,
+  this time actually deployed) before retrying notebook 2.
 
 ---
 
