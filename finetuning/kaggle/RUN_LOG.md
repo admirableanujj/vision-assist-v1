@@ -61,12 +61,49 @@ fixing (not taken on faith):
 Both agents' full reports are preserved in this session's transcript, not
 duplicated here — this is the condensed, action-oriented version.
 
-### Attempt 10 — kernel version 10 — 2026-11-05 (pending)
+### Attempt 12 — kernel version 12 — 2026-11-06
 
-- **Trigger:** `kaggle kernels push` after force-extracting LVIS's labels
-  zip (see attempt 9's entry) — another real bug found live, not by
-  either review agent (neither had Kaggle access to observe it).
-- **Status:** pending.
+- **Trigger:** root-cause fix for attempts 10/11's apparent stall — see
+  below. Changed the three `!python ...` invocations in notebook 1
+  (`prepare_dataset.py`, `prepare_coco_forgetting_check.py`, `eda.py`) to
+  `!python -u ...`.
+- **Why:** confirmed locally (a 5-line, 1-second-per-line `print()` script
+  run under `python3 script.py | while read ...` vs `python3 -u script.py
+  | while read ...`) that piping a Python process's stdout through a
+  non-TTY — exactly what `!python` does inside a Jupyter/Kaggle cell —
+  makes CPython fall back to full block buffering by default. Without
+  `-u`, *every* `print()` in the child process, including the
+  per-10,000-file progress lines added for attempt 11, sits invisible in
+  an internal buffer until it fills (~8KB) or the process exits. The
+  "no new output for 60+ minutes" symptom in attempts 10 and 11 was most
+  likely this buffering hiding real (if slow) progress the whole time —
+  not an actual hang, and not something attempt 11's progress-print fix
+  alone could have surfaced, since those new prints were just as
+  buffered as everything else.
+- **Status:** pending — pushed, monitoring live. With `-u`, progress
+  lines should now appear in `kaggle kernels logs -f` as they're printed,
+  which finally makes it possible to tell "slow but progressing" apart
+  from "actually stuck" instead of guessing.
+
+### Attempt 11 — kernel version 11 — 2026-11-05/06
+
+- **Trigger:** `kaggle kernels push` with attempt 10's progress-print
+  instrumentation (`find_candidates()`/`_build_image_index()` in
+  `prepare_dataset.py`: total-count print + every-10,000-files print) and
+  `rglob` → `glob` (both label dirs are flat, no recursion needed).
+- **Result:** ran past the same points attempt 10 did (LVIS force-extract:
+  114,262 label files; zip cleanup; `Found 17998 LVIS images`), then hit
+  `Scanning COCO train2017 labels for the 20 kept classes...` and produced
+  **zero further output for well over an hour** (two separate background
+  monitors — one capped at 45 min, one at 30+ min on top of that — both
+  ended via timeout, not a status change; two live `kaggle kernels logs
+  -f` pulls ~15s apart were byte-for-byte identical at that same cutoff
+  line). This is the *same* symptom as attempt 10, despite the new
+  progress prints that should have appeared almost immediately after that
+  line (a glob + a print, not slow work) — which is what pointed at
+  buffering rather than genuine slowness or a hang. See attempt 12.
+- **Status:** superseded by attempt 12 (push supersedes the running
+  session; Kaggle's API has no separate "cancel" call).
 
 ### Attempt 9 — kernel version 9 — 2026-11-05
 
