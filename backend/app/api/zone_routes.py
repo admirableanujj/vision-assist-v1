@@ -46,17 +46,34 @@ async def get_user_zones(db: Session = Depends(get_db), current_user: dict = Dep
         raise HTTPException(status_code=500, detail="Error retrieving zones.")
 
 @router.get("/zones/{zone_id}/detected")
-async def get_zone_detected_objects(zone_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
-    """Fetch live objects detected by YOLO/VisionTracker in the active zone."""
+async def get_zone_detected_objects(zone_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    user_id = current_user.get("id") or current_user.get("user_id")    
+    
+    # 1. Validate that the zone belongs to the user and retrieve its name
+    zone_row = db.execute(
+        text("SELECT name FROM zones WHERE id = :zone_id AND user_id = :user_id"),
+        {"zone_id": zone_id, "user_id": user_id}
+    ).fetchone()
+
+    if not zone_row:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Access denied: Zone does not belong to user or does not exist."
+        )    
+    
+    zone_name = zone_row[0]
+
+    # 2. Fetch live objects detected by YOLO/VisionTracker matching this zone name
     try:
         result = db.execute(
             text("""
-                SELECT id, object_class, confidence, zone_name 
-                FROM detections 
-                WHERE zone_name ILIKE :zone_filter OR zone_name ILIKE '%Living%'
-                ORDER BY timestamp DESC LIMIT 10
+                SELECT d.id, d.object_class, d.confidence, d.zone_name 
+                FROM detections d
+                LEFT JOIN cameras c ON d.camera_id = c.id
+                WHERE (d.zone_name ILIKE :zone_name OR c.zone_id = :zone_id)
+                ORDER BY d.timestamp DESC LIMIT 10
             """),
-            {"zone_filter": f"%{zone_id}%"}
+            {"zone_name": f"%{zone_name}%", "zone_id": zone_id}
         )
         rows = result.fetchall()
         detected_items = [
@@ -70,14 +87,14 @@ async def get_zone_detected_objects(zone_id: str, db: Session = Depends(get_db),
 
         if not detected_items:
             detected_items = [
-                {"id": "det-1", "name": "Coffee Mug", "confidence": 0.94, "image": "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=150"},
-                {"id": "det-2", "name": "Smart Laptop", "confidence": 0.91, "image": "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=150"},
-                {"id": "det-3", "name": "Office Desk Lamp", "confidence": 0.88, "image": "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=150"}
+                {"id": 1, "name": "Coffee Mug", "confidence": 0.94, "image": "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=150"},
+                {"id": 2, "name": "Smart Laptop", "confidence": 0.91, "image": "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=150"},
+                {"id": 3, "name": "Office Desk Lamp", "confidence": 0.88, "image": "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=150"}
             ]
 
         return {"detected_items": detected_items}
     except Exception as e:
-        logger.error(f"Error fetching detected objects for {zone_id}: {e}")
+        logger.error(f"Error fetching detected objects for zone {zone_id}: {e}")
         return {"detected_items": []}
 
 @router.get("/items/registered")
@@ -101,8 +118,8 @@ async def get_registered_items(db: Session = Depends(get_db), current_user: dict
 
         if not items:
             items = [
-                {"id": "item-1", "name": "Master Keys", "description": "Front door facility keys", "image": "https://images.unsplash.com/photo-1582139329536-e7284fece509?w=150"},
-                {"id": "item-2", "name": "Security Badge", "description": "RFID access badge", "image": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150"}
+                {"id": "1", "name": "Master Keys", "description": "Front door facility keys", "image": "https://images.unsplash.com/photo-1582139329536-e7284fece509?w=150"},
+                {"id": "2", "name": "Security Badge", "description": "RFID access badge", "image": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150"}
             ]
 
         return {"items": items}

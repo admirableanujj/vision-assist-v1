@@ -50,7 +50,6 @@ export function useVisionWS(isStreamActive = true, engine = 'yolo', zoneId = 'zo
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/vision?engine=${encodeURIComponent(engine)}&zone=${encodeURIComponent(zoneId)}`;
 
-
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -148,7 +147,7 @@ export function useVisionWS(isStreamActive = true, engine = 'yolo', zoneId = 'zo
       ctx.lineWidth = 2.5;
       ctx.strokeRect(x1, y1, width, height);
 
-      // Corrected confidence calculation
+      // Fixed confidence multiplication calculation
       const labelText = `${label} ${(confidence * 100).toFixed(0)}%`;
       ctx.font = "12px Inter, system-ui, sans-serif";
       const textMetrics = ctx.measureText(labelText);
