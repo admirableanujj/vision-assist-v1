@@ -157,6 +157,21 @@ separate and more fundamental: redirect Ultralytics' `datasets_dir` away
 from `/kaggle/working` (its default — see Section 3.1.1 below) before
 triggering either download.
 
+**The symlink has a side effect: force-extract LVIS's labels afterward.**
+Confirmed live, against the actual `ultralytics==8.4.106` source
+(`unzip_file()` in `ultralytics/utils/downloads.py`): it treats *any*
+pre-existing, non-empty target directory as "already fully extracted" and
+skips unzipping unconditionally (`exist_ok=False` by default) — it can't
+distinguish our own `images/` symlink from real extracted content. So
+`check_det_dataset("lvis.yaml")` downloads `lvis-labels-segments.zip`
+correctly, then silently skips unzipping it (logged: `"destination
+directory .../lvis is not empty"`), and `prepare_dataset.py`'s
+`find_candidates()` finds **zero** LVIS images as a direct result — the
+labels were simply never written to disk. Fix: immediately after the LVIS
+trigger, call `unzip_file(file=lvis_labels_zip, path=datasets_dir,
+exist_ok=True)` — the identical call `safe_download()` already makes
+internally, just with that one flag forced.
+
 #### 3.1.1 On Kaggle specifically: redirect `datasets_dir` out of `/kaggle/working`
 
 Ultralytics defaults `datasets_dir` to `<cwd>/datasets` whenever it finds

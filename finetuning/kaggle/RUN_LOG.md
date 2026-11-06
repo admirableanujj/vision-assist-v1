@@ -61,15 +61,59 @@ fixing (not taken on faith):
 Both agents' full reports are preserved in this session's transcript, not
 duplicated here — this is the condensed, action-oriented version.
 
-### Attempt 9 — kernel version 9 — 2026-11-05 (in progress)
+### Attempt 10 — kernel version 10 — 2026-11-05 (pending)
 
-- **Trigger:** `kaggle kernels push` with the full fix set above, plus a
-  real bug found live (not by either agent, since neither had Kaggle
-  access): see attempt 7's entry below for the mount-path discovery.
-- **Status:** running — script-copy step (now reordered before the
-  download, confirmed working in ~30s via `kaggle kernels logs -f`
-  immediately after push, rather than waiting ~20min to find out) and
-  COCO download both confirmed progressing normally.
+- **Trigger:** `kaggle kernels push` after force-extracting LVIS's labels
+  zip (see attempt 9's entry) — another real bug found live, not by
+  either review agent (neither had Kaggle access to observe it).
+- **Status:** pending.
+
+### Attempt 9 — kernel version 9 — 2026-11-05
+
+- **Trigger:** `kaggle kernels push` with the full upfront-review fix set
+  (showstopper yaml path, perf fix, idempotency, exit-code checks) plus
+  the `SCRIPTS_INPUT_DIR` mount-path fix from attempt 8.
+- **Progress confirmed good:** script-copy step (now reordered before the
+  download) succeeded in ~30s via `kaggle kernels logs -f` right after
+  push — `Copied: ['eda.py', 'prepare_dataset.py', 'prepare_coco_forgetting_check.py']`.
+  COCO downloaded fully. LVIS correctly reused the symlinked images
+  (zero duplicate download, confirmed by the "destination directory
+  .../coco/images/train2017 is not empty" skip messages). **Zip cleanup
+  worked**: `Deleted /kaggle/tmp/datasets/coco/images/train2017.zip
+  (19.3GB)` + `val2017.zip (0.8GB)`. **Exit-code check worked exactly as
+  designed**: caught `prepare_dataset.py` failing (exit code 1) and
+  stopped the notebook cleanly with a clear message, instead of silently
+  continuing with missing output.
+- **Status:** `KernelWorkerStatus.ERROR` — but on a genuinely new,
+  different bug, not a repeat of anything already fixed.
+- **Key error:** `AssertionError: prepare_dataset.py exited with code 1`
+  → underlying cause: `Found 0 LVIS images containing at least one novel
+  class` → `No LVIS images matched any novel class.`
+- **Root cause, verified against actual Ultralytics source
+  (`unzip_file()` in `ultralytics/utils/downloads.py`):** the attempt-1
+  symlink fix (`datasets/lvis/images` → `datasets/coco/images`) has a side
+  effect nobody anticipated — it makes `datasets/lvis/` *non-empty* before
+  `check_det_dataset("lvis.yaml")` ever runs. Ultralytics'
+  `unzip_file()` treats any pre-existing non-empty target directory as
+  "already fully extracted" and skips unzipping unconditionally
+  (`exist_ok=False` by default) — it has no way to distinguish our own
+  `images/` symlink from real extracted labels. So
+  `lvis-labels-segments.zip` downloaded correctly but its contents were
+  **never actually unzipped** (logged: `"Skipping
+  .../lvis-labels-segments.zip unzip as destination directory
+  .../lvis is not empty"`) — meaning `prepare_dataset.py --lvis-root
+  .../lvis` found an empty `labels/` directory and correctly reported
+  zero matches.
+- **Verified the fix mechanism standalone** (extracted just `unzip_file`'s
+  core logic, no Ultralytics import needed) before trusting it: a zip
+  unzipped into a directory that already has unrelated content is
+  silently skipped with `exist_ok=False`, and correctly force-extracts
+  with `exist_ok=True`.
+- **Fix applied:** immediately after the LVIS trigger, call
+  `unzip_file(file=lvis_labels_zip, path=datasets_dir, exist_ok=True)` —
+  the identical call `safe_download()` already makes internally, with
+  that one flag forced. Added an assertion that label files actually
+  exist afterward, not just that the call didn't raise (→ attempt 10).
 
 ### Attempts 7-8 — kernel versions 7-8 — 2026-11-05
 
