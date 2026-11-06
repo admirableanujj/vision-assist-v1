@@ -10,13 +10,46 @@ the ones that worked.
 
 ## Notebook 1 — `01_dataset_prep_and_eda.ipynb`
 
-### Attempt 5 — kernel version 5 — 2026-11-05 (pending)
+### Attempt 6 — kernel version 6 — 2026-11-05 (pending)
+
+- **Trigger:** `kaggle kernels push` after filling in the `SCRIPTS_INPUT_DIR`
+  placeholder (see attempt 5's entry) — my own oversight, not a design bug.
+- **Status:** pending.
+
+### Attempt 5 — kernel version 5 — 2026-11-05
 
 - **Trigger:** `kaggle kernels push` after replacing `model.train(data=...,
-  epochs=1)` with direct `check_det_dataset(...)` calls (see attempt 4's
-  entry below) — needs attempt 4's stuck session stopped first (Kaggle
-  limits concurrent running kernels per account; see note below).
-- **Status:** pending.
+  epochs=1)` with direct `check_det_dataset(...)` calls (attempt 4).
+- **The big disk/training bugs are confirmed fixed.** Pushing v5 superseded
+  attempt 4's stuck session (confirmed: fresh `0.00s`-timestamped logs
+  immediately after push). Live-streamed progress: COCO's `val2017.zip`
+  (5,001 images) downloaded and unzipped; `train2017.zip` (18GB) downloaded
+  in full; LVIS correctly reused the symlinked images — log showed
+  `WARNING ⚠️ Skipping ... unzip as destination directory
+  /kaggle/tmp/datasets/coco/images/train2017 is not empty` (the dedup fix
+  working exactly as designed, zero duplicate image download) — and only
+  fetched its own small `lvis-labels-segments.zip` (496.7MB). **`Dataset
+  download success ✅ (35.7s)`.** No training epoch ran at all.
+- **Status:** `KernelWorkerStatus.ERROR` — but on something trivial.
+- **Key error:**
+  ```
+  AssertionError: Missing expected script(s) — only found [].
+  Check SCRIPTS_INPUT_DIR above.
+  ```
+- **Root cause:** `SCRIPTS_INPUT_DIR` was still the literal placeholder
+  string `/kaggle/input/<scripts-slug>` inside the notebook cell itself —
+  never filled in with the real slug (`vision-assist-finetuning-scripts`),
+  even though `kernel-metadata.json`'s `dataset_sources` already wired the
+  dataset's *attachment*. Attaching a dataset and pointing code at its
+  actual mounted path are two different things; only the first was done.
+  My oversight when filling in the other notebooks' slug placeholders
+  earlier — this one in notebook 01 itself was missed.
+- **Fix applied:** fill in `SCRIPTS_INPUT_DIR` with the real slug
+  (→ attempt 6).
+- **Note:** `kaggle kernels logs -f` (live-streaming) was essential here —
+  caught the real disk/training fixes working *while the run was still in
+  progress*, well before `kernels status` flipped to `ERROR` on this
+  unrelated, trivial issue.
 
 ### Attempt 4 — kernel version 4 — 2026-11-05
 
