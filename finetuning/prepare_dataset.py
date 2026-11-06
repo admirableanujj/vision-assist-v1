@@ -179,7 +179,10 @@ def _build_image_index(images_subdir: Path) -> dict[str, Path]:
     (O(candidates x dir_size)); this builds the index once per directory
     and callers cache it, making total cost O(dir_size) regardless of how
     many candidates are looked up against it."""
-    return {p.stem: p for p in images_subdir.iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png"}}
+    print(f"  Building image index for {images_subdir} (one-time, this directory only)...")
+    index = {p.stem: p for p in images_subdir.iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png"}}
+    print(f"  Indexed {len(index)} images under {images_subdir}")
+    return index
 
 
 def find_candidates(labels_dir: Path, images_root: Path, id_map: dict[int, int]) -> dict[str, dict]:
@@ -199,7 +202,18 @@ def find_candidates(labels_dir: Path, images_root: Path, id_map: dict[int, int])
     remapped via _filter_and_remap."""
     candidates = {}
     image_index_cache: dict[Path, dict[str, Path]] = {}
-    for label_path in sorted(labels_dir.rglob("*.txt")):
+    # glob, not rglob: train2017/val2017 are flat directories (no subdirectories to
+    # recurse into) for both COCO and LVIS, so rglob's extra recursive tree-walking
+    # bought nothing here — switched after a live run sat silent for over an hour on
+    # this exact call with no way to tell whether it was slow or truly stuck (see the
+    # progress print below, added for the same reason: this function previously gave
+    # zero feedback between "Scanning..." and the final count, no matter how long it
+    # actually took).
+    all_labels = sorted(labels_dir.glob("*.txt"))
+    print(f"  {len(all_labels)} label files to scan under {labels_dir}")
+    for i, label_path in enumerate(all_labels):
+        if i and i % 10_000 == 0:
+            print(f"  ...scanned {i}/{len(all_labels)} label files, {len(candidates)} candidates so far")
         kept_lines = _filter_and_remap(label_path, id_map)
         if not kept_lines:
             continue
