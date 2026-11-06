@@ -10,11 +10,53 @@ the ones that worked.
 
 ## Notebook 1 — `01_dataset_prep_and_eda.ipynb`
 
-### Attempt 4 — kernel version 4 — 2026-11-05 (in progress)
+### Attempt 5 — kernel version 5 — 2026-11-05 (pending)
 
-- **Trigger:** `kaggle kernels push` after fixing attempt 3's redirect (see
-  below) to actually take effect, not just update the settings dict.
-- **Status:** pending push + run.
+- **Trigger:** `kaggle kernels push` after replacing `model.train(data=...,
+  epochs=1)` with direct `check_det_dataset(...)` calls (see attempt 4's
+  entry below) — needs attempt 4's stuck session stopped first (Kaggle
+  limits concurrent running kernels per account; see note below).
+- **Status:** pending.
+
+### Attempt 4 — kernel version 4 — 2026-11-05
+
+- **Trigger:** `kaggle kernels push` after fixing attempt 3's redirect to
+  actually take effect (force-reimport `ultralytics.*` after patching
+  `settings.json` on disk — see attempt 3's entry).
+- **Status:** disk-space bug fixed (confirmed — got past the point that
+  killed attempts 2/3, loaded the model, printed the YOLO26n architecture
+  summary), but **discovered a second, much bigger bug**: never reached
+  `ERROR` or `COMPLETE` — had to be investigated while still `RUNNING`.
+- **What was actually happening (via `kaggle kernels logs -f`, live-streamed
+  while still running):** the COCO-trigger cell's `model.train(data="coco.yaml",
+  epochs=1, imgsz=640)` doesn't just check/download the dataset — it fully
+  trains that one epoch over **all 118,287 COCO `train2017` images**, on
+  CPU, since nothing in an unattended `kaggle kernels push` run interrupts
+  it the way the notebook's own comment assumed a human would ("interrupt
+  after epoch 1 starts"). Live log showed epoch `1/1` at 44% (batch
+  3258/7393), ~8.3s/iteration, **~9.5 more hours projected** on top of the
+  ~8 already elapsed — ~17+ hours total for a step meant only to trigger a
+  download. This would almost certainly have hit Kaggle's session cap
+  before finishing, burning the entire session for nothing.
+- **Root cause:** the download/convert trigger used `model.train()`, which
+  only makes sense as a trigger if something (a human) stops it right
+  after the download completes and before real training begins. There's
+  nothing to interrupt an API-triggered run.
+- **Fix applied:** call `ultralytics.data.utils.check_det_dataset()`
+  directly instead — the exact function `model.train()` already calls
+  internally to download/verify a dataset, *before* building any model or
+  training loop. Same download, zero training compute, no human required
+  (→ attempt 5).
+- **Note on stopping a stuck session:** no `kaggle kernels` CLI subcommand
+  cancels a running kernel (`kaggle kernels --help` lists
+  list/files/get/init/push/pull/output/status/logs/update/delete/topics —
+  no stop/cancel). Must be stopped manually from the kernel's page on
+  kaggle.com, or left to hit Kaggle's own session cap.
+- **Also discovered:** `kaggle kernels output` hangs/returns nothing while
+  a kernel is still `RUNNING` (no partial/live output via that command) —
+  but `kaggle kernels logs -f` *does* stream live logs from a running
+  session, which is how this was actually diagnosed without waiting for
+  it to finish or fail.
 
 ### Attempt 3 — kernel version 3 — 2026-11-05
 

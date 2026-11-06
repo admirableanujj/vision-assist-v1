@@ -115,11 +115,26 @@ classes' ids above were confirmed directly against Ultralytics' current
 `lvis.yaml` — not estimated.
 
 ```python
-from ultralytics import YOLO
-model = YOLO("yolo26n.pt")
-model.train(data="coco.yaml", epochs=100, imgsz=640)   # download COCO's images FIRST — see warning below
-model.train(data="lvis.yaml", epochs=100, imgsz=640)   # then LVIS — needed too, for the annotations
+from ultralytics.data.utils import check_det_dataset
+check_det_dataset("coco.yaml")   # download COCO's images FIRST — see warning below
+check_det_dataset("lvis.yaml")   # then LVIS — needed too, for the annotations
 ```
+
+**Trigger the download with `check_det_dataset()` directly, not
+`model.train()`.** An earlier version of this guide (and
+`finetuning/01_dataset_prep_and_eda.ipynb`) used
+`model.train(data="coco.yaml", epochs=1)` with a comment saying
+"interrupt after epoch 1 starts" — fine for a human watching the cell run,
+but an **unattended** run (e.g. `kaggle kernels push`, which executes the
+whole notebook top to bottom with nobody there to interrupt anything) has
+no one to click Stop. Confirmed live on Kaggle: this silently trained one
+full epoch over all 118,287 COCO `train2017` images on CPU — ~8.3s per
+iteration, ~17+ hours projected for a single throwaway epoch whose only
+real purpose was triggering a download. `check_det_dataset()` is the exact
+function `model.train()` calls internally to download/verify a dataset,
+*before* it builds any model or starts training — calling it directly
+gets the identical download with zero training compute, deterministically,
+regardless of who (or what) is running the notebook.
 
 **Order matters, and don't run these independently.** `lvis.yaml`'s own
 `download:` block fetches COCO's `train2017.zip`(19G)/`val2017.zip`(1G)

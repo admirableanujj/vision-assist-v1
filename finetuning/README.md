@@ -67,10 +67,12 @@ notebook, run top to bottom:
    this notebook's *persisted Output*, which a single COCO download alone
    can exceed (Guide Section 3.1.1). Only the small, curated outputs need
    to persist — the raw LVIS/COCO source data doesn't.
-3. Triggers the COCO download first (~20GB, one throwaway epoch —
-   interrupt right after it logs the first epoch starting, or let it
-   finish), then symlinks LVIS's expected image directory to that same
-   download, then triggers LVIS. **Order matters here**: `lvis.yaml`'s own
+3. Triggers the COCO download first via `check_det_dataset("coco.yaml")`
+   (~20GB) — not `model.train()`, which would actually train an epoch over
+   all 118K images with nobody there to interrupt it in an unattended run
+   (Guide Section 3.1 explains why) — then symlinks LVIS's expected image
+   directory to that same download, then triggers LVIS the same way.
+   **Order matters here**: `lvis.yaml`'s own
    download step independently re-fetches the exact same COCO
    `train2017`/`val2017` images (~20GB) into a separate `datasets/lvis/`
    copy if you let it — doubling the download/disk for no reason, since
