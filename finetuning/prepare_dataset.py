@@ -171,9 +171,15 @@ def _filter_and_remap(label_path: Path, id_map: dict[int, int]) -> list[str]:
     return kept
 
 
-def _find_image(dataset_root: Path, images_subdir: Path, stem: str) -> Path | None:
-    candidates = [p for p in images_subdir.glob(f"{stem}.*") if p.suffix.lower() in {".jpg", ".jpeg", ".png"}]
-    return candidates[0] if candidates else None
+def _build_image_index(images_subdir: Path) -> dict[str, Path]:
+    """One-time scan of images_subdir -> {stem: Path}. find_candidates()
+    below calls this per candidate label file — for COCO train2017 alone
+    that's tens of thousands of calls against a 118,287-file directory.
+    The original version re-globbed images_subdir on every single call
+    (O(candidates x dir_size)); this builds the index once per directory
+    and callers cache it, making total cost O(dir_size) regardless of how
+    many candidates are looked up against it."""
+    return {p.stem: p for p in images_subdir.iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png"}}
 
 
 def find_candidates(labels_dir: Path, images_root: Path, id_map: dict[int, int]) -> dict[str, dict]:
@@ -192,12 +198,16 @@ def find_candidates(labels_dir: Path, images_root: Path, id_map: dict[int, int])
     containing at least one class in id_map, with lines already filtered/
     remapped via _filter_and_remap."""
     candidates = {}
+    image_index_cache: dict[Path, dict[str, Path]] = {}
     for label_path in sorted(labels_dir.rglob("*.txt")):
         kept_lines = _filter_and_remap(label_path, id_map)
         if not kept_lines:
             continue
         rel = label_path.relative_to(labels_dir)
-        image_path = _find_image(images_root, images_root / rel.parent, label_path.stem)
+        images_subdir = images_root / rel.parent
+        if images_subdir not in image_index_cache:
+            image_index_cache[images_subdir] = _build_image_index(images_subdir)
+        image_path = image_index_cache[images_subdir].get(label_path.stem)
         if image_path is None:
             print(f"[WARN] No image found for label {label_path}, skipping")
             continue
@@ -250,8 +260,19 @@ def copy_subset(merged: dict, out_images: Path, out_labels: Path, val_fraction: 
 
 
 def write_data_yaml(output_dir: Path):
+    # Deliberately NO `path:` key. Ultralytics' check_det_dataset() uses an
+    # explicit `path:` verbatim, even if it's a now-stale absolute path from
+    # wherever this script originally ran (e.g. /kaggle/working/lostfound) —
+    # it only falls back to resolving relative to the yaml file's OWN
+    # directory when `path:` is absent entirely. Since this yaml gets
+    # produced on one machine/container and consumed from a different mount
+    # point on another (Kaggle: notebook 1 writes to /kaggle/working/, but
+    # notebooks 2/3 read the committed Output back at /kaggle/input/.../),
+    # a baked-in absolute path would silently point at a directory that
+    # doesn't exist there, raising FileNotFoundError deep inside
+    # model.train()/model.val(). Omitting it keeps this yaml portable across
+    # any mount point.
     yaml_content = (
-        f"path: {output_dir.resolve()}\n"
         f"train: images/train\n"
         f"val: images/val\n"
         f"\n"
@@ -273,6 +294,12 @@ def main():
 
     rng = random.Random(args.seed)
     out_images, out_labels = args.output_dir / "images", args.output_dir / "labels"
+    # Clear any previous run's output first — a fresh container (every
+    # `kaggle kernels push`) never hits this, but re-running interactively
+    # in the same session after changing a flag (e.g. --coco-sample-size)
+    # would otherwise leave stale images/labels from the prior selection
+    # mixed in, silently inflating eda.py's instance counts.
+    shutil.rmtree(args.output_dir, ignore_errors=True)
     for split in ("train", "val"):
         (out_images / split).mkdir(parents=True, exist_ok=True)
         (out_labels / split).mkdir(parents=True, exist_ok=True)

@@ -31,6 +31,7 @@ Usage:
 """
 import argparse
 import random
+import shutil
 from pathlib import Path
 
 from prepare_dataset import COCO_OLD_TO_NEW, LOSTFOUND_CLASS_NAMES, find_candidates
@@ -41,9 +42,13 @@ def write_eval_only_yaml(output_dir: Path):
     at all — it only ever gets used for model.val(split="val"). Points
     `train` at the same images/val/ dir rather than a nonexistent folder,
     since Ultralytics' yaml loader expects both keys to resolve to a real
-    path even when `train` is never actually read for a pure eval run."""
+    path even when `train` is never actually read for a pure eval run.
+
+    Deliberately NO `path:` key — see prepare_dataset.write_data_yaml's
+    comment for why a baked-in absolute path breaks the moment this yaml
+    is read from a different mount point than the one it was written on
+    (e.g. notebook 1's /kaggle/working/ vs. notebook 3's /kaggle/input/...)."""
     yaml_content = (
-        f"path: {output_dir.resolve()}\n"
         f"train: images/val\n"
         f"val: images/val\n"
         f"\n"
@@ -63,6 +68,10 @@ def main():
 
     rng = random.Random(args.seed)
     out_images, out_labels = args.output_dir / "images", args.output_dir / "labels"
+    # Same idempotency reasoning as prepare_dataset.py's main() — clear any
+    # previous run's output before writing, so a changed --sample-size on a
+    # re-run doesn't leave stale images/labels mixed in with the new ones.
+    shutil.rmtree(args.output_dir, ignore_errors=True)
     (out_images / "val").mkdir(parents=True, exist_ok=True)
     (out_labels / "val").mkdir(parents=True, exist_ok=True)
 
