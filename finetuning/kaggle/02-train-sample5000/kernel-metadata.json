@@ -1,0 +1,15 @@
+{
+  "id": "dceshubh/visionassist-02-train-sample5000",
+  "title": "VisionAssist 02 Train Sample5000",
+  "code_file": "02_train_sample5000.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "enable_tpu": false,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": ["dceshubh/visionassist-01-dataprep-sample5000"],
+  "model_sources": []
+}
