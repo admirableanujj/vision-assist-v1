@@ -18,17 +18,23 @@ reflects the latest known-good state, not every attempt that got there.
 - **Notebook 2** (`02_train.ipynb`): ✅ complete, kernel version 3 —
   trained successfully after the scripts-dataset fix. Early-stopped at
   epoch 55 (best: epoch 40). See Training results below.
-- **Notebook 3** (`03_evaluate_finetune_checks.ipynb`): running (kernel
-  version 3, CPU-only, no GPU quota spent — `enable_gpu: false` confirmed
-  directly in its `kernel-metadata.json`).
+- **Notebook 3** (`03_evaluate_finetune_checks.ipynb`): ✅ complete,
+  kernel version 3. See Eval results below for the real (matched
+  apples-to-apples) forgetting comparison, built on top of this.
+- **Hyperparameter sweep** (in response to the uneven forgetting found
+  above): running two variants off the baseline — see Hyperparameter
+  sweep section below.
 
 ## Dataset & kernel locations
 
 | What | Kaggle ref | Produces |
 |---|---|---|
-| Notebook 1 kernel | `dceshubh/visionassist-01-dataset-prep-eda` | Output: `lostfound/` (merged 48-class training set), `coco_forgetting_check/` (forgetting-check eval set), `eda_report/` (`class_distribution.csv`/`.png`, `eda_summary.json`) |
-| Notebook 2 kernel | `dceshubh/visionassist-02-train` | Output: `runs/lostfound_yolo26n/weights/{best,last}.pt` |
-| Notebook 3 kernel | `dceshubh/visionassist-03-evaluate-fine-tune-checks` | not yet run |
+| Notebook 1 kernel (baseline, `--coco-sample-size 750`) | `dceshubh/visionassist-01-dataset-prep-eda` | Output: `lostfound/` (merged 48-class training set), `coco_forgetting_check/` (forgetting-check eval set), `eda_report/` (`class_distribution.csv`/`.png`, `eda_summary.json`) |
+| Notebook 1 kernel (sweep, `--coco-sample-size 5000`) | `dceshubh/visionassist-01-dataprep-sample5000` | Same outputs, bigger COCO-only sample |
+| Notebook 2 kernel (baseline, `freeze=10`) | `dceshubh/visionassist-02-train` | Output: `runs/lostfound_yolo26n/weights/{best,last}.pt` — also archived locally at `finetuning/runs/run1_baseline_cls0.5_freeze10_sample750/` |
+| Notebook 2 kernel (sweep, `freeze=None`, baseline dataset) | `dceshubh/visionassist-02-train-freeze-none` | Same output path, different weights |
+| Notebook 2 kernel (sweep, `freeze=10`, sample5000 dataset) | `dceshubh/visionassist-02-train-sample5000` | Same output path, different weights |
+| Notebook 3 kernel | `dceshubh/visionassist-03-evaluate-fine-tune-checks` | Forgetting-check + novel-class sanity results |
 | **Scripts dataset** (separate from the kernels above) | `dceshubh/vision-assist-finetuning-scripts` | `prepare_dataset.py`, `prepare_coco_forgetting_check.py`, `eda.py` |
 
 ## Critical findings (apply to every future run — not just history)
@@ -40,10 +46,20 @@ reflects the latest known-good state, not every attempt that got there.
    after every script change — otherwise the kernel silently runs stale
    code. This sat stale from 2026-11-05 through five supposed notebook-1
    fixes before being caught by notebook 2's first training failure.
-2. **Mount paths differ by attachment type:**
-   - `dataset_sources` (e.g. the scripts dataset) → `/kaggle/input/datasets/<owner>/<slug>/`
-   - `kernel_sources` (another kernel's output, e.g. notebook 1's output
-     attached to notebook 2) → flat `/kaggle/input/<slug>/`
+2. **`kernel_sources` mount paths are not stable — don't hardcode any
+   convention, search instead.** `dataset_sources` (e.g. the scripts
+   dataset) reliably mounts at `/kaggle/input/datasets/<owner>/<slug>/`.
+   `kernel_sources` is the problem: notebook 2's baseline run mounted its
+   single `kernel_sources` entry flat at `/kaggle/input/<slug>/`, but the
+   freeze=None sweep variant — identical single `kernel_sources` entry,
+   same upstream kernel, no structural difference — mounted the exact
+   same thing at `/kaggle/input/notebooks/<owner>/<slug>/` instead, and
+   errored fast (`AssertionError`, ~1 min GPU time) on the hardcoded flat
+   path. Fixed by replacing every hardcoded `kernel_sources` path with a
+   runtime search — `Path("/kaggle/input").rglob(filename)` filtered by
+   parent directory name — across `02_train.ipynb` and all its sweep
+   variants, and `03_evaluate_finetune_checks.ipynb`. `dataset_sources`
+   paths are still hardcoded since they've been reliable every time.
 3. **Redirect `datasets_dir` off `/kaggle/working`** (20GB quota) to
    `/kaggle/tmp` (large ephemeral scratch). `settings.update()` alone does
    not work — `DATASETS_DIR` is frozen at import time in two separate
@@ -210,8 +226,54 @@ specifically to give these classes more training weight, or revisit
 `freeze=10` → `freeze=None`. Worth deciding before golden-set
 photography, not after.
 
+## Hyperparameter sweep (2026-11-06, in progress)
+
+Started in response to the uneven forgetting found above — specifically
+to test two hypotheses about *why* `scissors`/`toothbrush`/`book`/
+`remote`/`suitcase` regressed so much more than the average. All variants
+keep `cls_pw=0.5` fixed (it's free, no reason to toggle it) and
+`epochs=100`/`patience=15`/`optimizer=AdamW`/`lr0=0.001` unchanged.
+
+| Run | `freeze` | `--coco-sample-size` | Dataset images | Status |
+|---|---|---|---|---|
+| **1 — baseline** | 10 | 750 | 18,748 | ✅ done — see Training/Eval results above |
+| **2 — bigger COCO sample** | 10 | 5000 | pending (prep running) | running |
+| **3 — unfrozen backbone** | None | 750 (same dataset as run 1) | 18,748 | running |
+
+**Run 2's hypothesis:** `merge_and_sample()` draws `coco_sample_size`
+COCO-only images **uniformly at random** from the ~64,696-image "has a
+kept class, no novel class" pool — not stratified by class. Rare kept
+classes (`scissors`: 223 total instances, `toothbrush`: 191) are
+under-represented in a small random draw purely because they're rare in
+that pool, independent of training quality. Raising the sample ~6.7x
+should proportionally raise their representation too. This is a blunt
+fix (also pulls in more of the already-dominant classes like `person`),
+not the surgical fix (class-stratified sampling) — noted as a possible
+follow-up, not implemented.
+
+**Run 3's hypothesis:** `freeze=10` only trains the backbone's attention
+block + neck + head (56.62% of params). Letting the full backbone adapt
+might recover some of what's lost on kept classes, at the cost of more
+compute/epoch and higher overfitting risk on this still-modest dataset.
+
+**Results — filled in once each run's training + forgetting-check complete:**
+
+| Run | mAP50-95 (novel, lostfound val) | mAP50-95 (forgetting-check, matched 5,000-img) | vs. base `yolo26n.pt` (0.365) | Training time |
+|---|---|---|---|---|
+| 1 — baseline | 0.171 | 0.272 | −25.3% | 4.94hr |
+| 2 — sample5000 | pending | pending | pending | pending |
+| 3 — freeze=None | pending | pending | pending | pending |
+
+Per-class `scissors`/`toothbrush` mAP50-95 (the worst-hit pair) will be
+tracked specifically across runs once available, since that's the direct
+test of run 2's hypothesis.
+
 ## GPU budget tracking
 
 Kaggle free tier: ~30 GPU-hr/week (T4/P100). Spent: ~4.94hr (notebook 2's
-successful training run) + ~1 min (its failed first attempt). Notebook 3
-costs zero GPU time (`enable_gpu: false`, CPU inference only).
+successful baseline training) + ~1 min (its failed first attempt) =
+~4.96hr so far. Run 2 (sample5000) adds ~22.6% more images per epoch on
+top of the baseline's pace; run 3 (freeze=None) trains more parameters
+per step, so expect somewhat longer than baseline for each — actual
+times will replace this estimate once both complete. Notebook 3 (eval)
+costs zero GPU time regardless of variant (`enable_gpu: false`).
