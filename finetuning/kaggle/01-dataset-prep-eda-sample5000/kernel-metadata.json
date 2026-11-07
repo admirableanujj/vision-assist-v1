@@ -1,6 +1,6 @@
 {
   "id": "dceshubh/visionassist-01-dataprep-sample5000",
-  "title": "VisionAssist 01 - Dataset Prep (coco-sample-size=5000)",
+  "title": "VisionAssist 01 Dataprep Sample5000",
   "code_file": "01_dataset_prep_and_eda_sample5000.ipynb",
   "language": "python",
   "kernel_type": "notebook",
