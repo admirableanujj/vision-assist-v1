@@ -8,33 +8,48 @@ reflects the latest known-good state, not every attempt that got there.
 
 ---
 
-## Status (as of 2026-11-06)
+## Status (as of 2026-11-07)
 
-- **Notebook 1** (`01_dataset_prep_and_eda.ipynb`): ✅ complete, kernel
-  version 14 — regenerated with the real fix (Finding 1) actually deployed.
-  Scan steps that took 34.5min/157min on stale scripts now complete in
-  seconds; data itself unchanged (confirms it was always correct, only
-  speed was broken).
-- **Notebook 2** (`02_train.ipynb`): ✅ complete, kernel version 3 —
-  trained successfully after the scripts-dataset fix. Early-stopped at
-  epoch 55 (best: epoch 40). See Training results below.
-- **Notebook 3** (`03_evaluate_finetune_checks.ipynb`): ✅ complete,
-  kernel version 3. See Eval results below for the real (matched
-  apples-to-apples) forgetting comparison, built on top of this.
-- **Hyperparameter sweep** (in response to the uneven forgetting found
-  above): running two variants off the baseline — see Hyperparameter
-  sweep section below.
+- **Notebook 1** (dataset prep + EDA): ✅ complete for both the baseline
+  (`--coco-sample-size 750`) and the sweep variant (`5000`).
+- **Notebook 2** (training): ✅ complete for all 3 runs — baseline,
+  `coco-sample-size=5000`, `freeze=None`. All early-stopped before the
+  100-epoch cap. Weights archived locally under `finetuning/runs/` (see
+  table below) in addition to living in each kernel's Kaggle Output.
+- **Notebook 3** (forgetting-check gate): ✅ complete for the baseline.
+  The two sweep variants were evaluated with a **local** matched
+  comparison instead of a Kaggle notebook-3 run (reused the same harness
+  already built for the baseline's apples-to-apples check — no need to
+  round-trip through Kaggle for CPU-only inference on weights already
+  downloaded).
+- **Not yet done:** the real golden-set 3-way benchmark
+  (`finetuning/evaluate.py`) — blocked on self-captured, annotated
+  photos (`finetuning/README.md` Step 4), not a code or pipeline task.
+  App integration is intentionally on hold until that benchmark exists.
+
+## Archived model weights
+
+| Run | `freeze` | `--coco-sample-size` | Local path | Kaggle kernel |
+|---|---|---|---|---|
+| 1 — baseline | 10 | 750 | `finetuning/runs/run1_baseline_cls0.5_freeze10_sample750/weights/` | `dceshubh/visionassist-02-train` |
+| 2 — bigger COCO sample | 10 | 5000 | `finetuning/runs/run2_sample5000_cls0.5_freeze10/weights/` | `dceshubh/visionassist-02-train-sample5000` |
+| 3 — unfrozen backbone | None | 750 (same dataset as run 1) | `finetuning/runs/run3_freeze_none_cls0.5_sample750/weights/` | `dceshubh/visionassist-02-train-freeze-none` |
+
+All three trained with `cls_pw=0.5`, `epochs=100` (cap), `patience=15`,
+`optimizer=AdamW`, `lr0=0.001`. Each archived run has its own `README.md`
+with the full hyperparameter/result detail; this file holds the
+cross-run comparison.
 
 ## Dataset & kernel locations
 
 | What | Kaggle ref | Produces |
 |---|---|---|
-| Notebook 1 kernel (baseline, `--coco-sample-size 750`) | `dceshubh/visionassist-01-dataset-prep-eda` | Output: `lostfound/` (merged 48-class training set), `coco_forgetting_check/` (forgetting-check eval set), `eda_report/` (`class_distribution.csv`/`.png`, `eda_summary.json`) |
-| Notebook 1 kernel (sweep, `--coco-sample-size 5000`) | `dceshubh/visionassist-01-dataprep-sample5000` | Same outputs, bigger COCO-only sample |
-| Notebook 2 kernel (baseline, `freeze=10`) | `dceshubh/visionassist-02-train` | Output: `runs/lostfound_yolo26n/weights/{best,last}.pt` — also archived locally at `finetuning/runs/run1_baseline_cls0.5_freeze10_sample750/` |
-| Notebook 2 kernel (sweep, `freeze=None`, baseline dataset) | `dceshubh/visionassist-02-train-freeze-none` | Same output path, different weights |
-| Notebook 2 kernel (sweep, `freeze=10`, sample5000 dataset) | `dceshubh/visionassist-02-train-sample5000` | Same output path, different weights |
-| Notebook 3 kernel | `dceshubh/visionassist-03-evaluate-fine-tune-checks` | Forgetting-check + novel-class sanity results |
+| Notebook 1 (baseline) | `dceshubh/visionassist-01-dataset-prep-eda` | `lostfound/` (18,748 images), `coco_forgetting_check/`, `eda_report/` |
+| Notebook 1 (sweep) | `dceshubh/visionassist-01-dataprep-sample5000` | Same outputs, `lostfound/` at 22,998 images |
+| Notebook 2 (baseline) | `dceshubh/visionassist-02-train` | `runs/lostfound_yolo26n/weights/{best,last}.pt` |
+| Notebook 2 (sweep: sample5000) | `dceshubh/visionassist-02-train-sample5000` | Same output path, different weights |
+| Notebook 2 (sweep: freeze=None) | `dceshubh/visionassist-02-train-freeze-none` | Same output path, different weights |
+| Notebook 3 | `dceshubh/visionassist-03-evaluate-fine-tune-checks` | Forgetting-check + novel-class sanity (baseline only — see Status) |
 | **Scripts dataset** (separate from the kernels above) | `dceshubh/vision-assist-finetuning-scripts` | `prepare_dataset.py`, `prepare_coco_forgetting_check.py`, `eda.py` |
 
 ## Critical findings (apply to every future run — not just history)
@@ -44,150 +59,138 @@ reflects the latest known-good state, not every attempt that got there.
    scripts (`prepare_dataset.py` etc.) live in the separate dataset above
    and need their own `kaggle datasets version -p finetuning/kaggle/scripts-dataset`
    after every script change — otherwise the kernel silently runs stale
-   code. This sat stale from 2026-11-05 through five supposed notebook-1
+   code. This sat stale for a full day through five supposed notebook-1
    fixes before being caught by notebook 2's first training failure.
 2. **`kernel_sources` mount paths are not stable — don't hardcode any
    convention, search instead.** `dataset_sources` (e.g. the scripts
    dataset) reliably mounts at `/kaggle/input/datasets/<owner>/<slug>/`.
-   `kernel_sources` is the problem: notebook 2's baseline run mounted its
-   single `kernel_sources` entry flat at `/kaggle/input/<slug>/`, but the
-   freeze=None sweep variant — identical single `kernel_sources` entry,
-   same upstream kernel, no structural difference — mounted the exact
-   same thing at `/kaggle/input/notebooks/<owner>/<slug>/` instead, and
-   errored fast (`AssertionError`, ~1 min GPU time) on the hardcoded flat
-   path. Fixed by replacing every hardcoded `kernel_sources` path with a
-   runtime search — `Path("/kaggle/input").rglob(filename)` filtered by
-   parent directory name — across `02_train.ipynb` and all its sweep
-   variants, and `03_evaluate_finetune_checks.ipynb`. `dataset_sources`
-   paths are still hardcoded since they've been reliable every time.
-3. **Redirect `datasets_dir` off `/kaggle/working`** (20GB quota) to
+   `kernel_sources` is the problem: the exact same single-`kernel_sources`
+   shape mounted flat (`/kaggle/input/<slug>/`) for one kernel push and
+   at `/kaggle/input/notebooks/<owner>/<slug>/` for another, with no
+   structural difference between the two to predict which applies. Fixed
+   by replacing every hardcoded `kernel_sources` path with a runtime
+   search — `Path("/kaggle/input").rglob(filename)` filtered by parent
+   directory name — across all `02_train*.ipynb` variants and
+   `03_evaluate_finetune_checks.ipynb`. `dataset_sources` paths are still
+   hardcoded since they've been reliable every time.
+3. **`kaggle kernels logs -f` on a long-running job does not reliably
+   replay the full history from byte 0.** For short runs it looks like a
+   full replay; for a long one (70+ epochs, several MB of log) it
+   appears to return a bounded recent window instead — naively enumerating
+   "all"-prefixed validation-summary lines in the order they appear in a
+   single pull silently mislabels their real epoch numbers (observed:
+   epochs that were actually 71-86 got reported as 13-30). Always resolve
+   the real epoch number from the nearest preceding `N/100` marker in the
+   same pull, never from positional/sequential counting.
+4. **Redirect `datasets_dir` off `/kaggle/working`** (20GB quota) to
    `/kaggle/tmp` (large ephemeral scratch). `settings.update()` alone does
    not work — `DATASETS_DIR` is frozen at import time in two separate
    modules; patch `settings.json` on disk and force-reimport `ultralytics.*`.
-4. **LVIS re-downloads COCO's own images independently.** Symlink
+5. **LVIS re-downloads COCO's own images independently.** Symlink
    `lvis/images → coco/images` to dedupe (download COCO first). Side
    effect: the symlink makes `unzip_file()` think `lvis/` is already
    "fully extracted," skipping the labels zip — force it with
    `exist_ok=True` right after the LVIS trigger.
-5. **Trigger dataset download via `check_det_dataset()` directly**, never
+6. **Trigger dataset download via `check_det_dataset()` directly**, never
    `model.train(epochs=1)` as a download trick — the latter actually
    trains (confirmed: ~17hr projected for one COCO epoch on CPU) since
    nothing interrupts an unattended run.
-6. **Generated dataset yamls must omit the `path:` key.** A baked-in
+7. **Generated dataset yamls must omit the `path:` key.** A baked-in
    absolute path breaks the moment the yaml is read from a different
    container (notebook 1 writes under `/kaggle/working/`, notebooks 2/3
    read it back under `/kaggle/input/...`).
-7. **`!python script.py` cells need `-u`** (unbuffered) or progress
+8. **`!python script.py` cells need `-u`** (unbuffered) or progress
    prints stay invisible until the process exits, making a slow-but-
    working step indistinguishable from a hang.
-8. **`cls_pw` (built-in inverse-class-frequency loss weighting, default
+9. **`cls_pw` (built-in inverse-class-frequency loss weighting, default
    `0.0`/off) is free** — no extra GPU time, just a loss-term change — so
    enable it on the first real training run rather than retrofitting
-   after a baseline. Currently set to `0.5` (dampened, not full `1.0`) —
+   after a baseline. Used `0.5` (dampened, not full `1.0`) throughout —
    see EDA results below for why.
+10. **`--coco-sample-size` controls a uniform-random draw, not a full
+    retention of COCO examples for the kept classes.** `merge_and_sample()`
+    keeps every LVIS-overlap image unconditionally, but only draws
+    `coco_sample_size` images **uniformly at random** from the much
+    larger "kept-class-only" candidate pool (~64,696 images at baseline).
+    Rare kept classes are proportionally under-represented in a small
+    random draw purely because they're rare in that pool — nothing to do
+    with training quality. Raising the sample size helps proportionally
+    but is a blunt instrument (also inflates already-dominant classes);
+    true class-stratified sampling would be the surgical fix, not
+    implemented here.
 
-## EDA results — notebook 1 output (`lostfound/`)
+## EDA results
 
-*Confirmed identical on kernel version 14 (real fix deployed) as on v13
-(stale scripts) — the underlying data was always correct; only the scan
-speed was affected by Finding 1's bug.*
+| Metric | Baseline (`--coco-sample-size 750`) | Sweep (`5000`) |
+|---|---|---|
+| Total images | 18,748 (train 14,999 / val 3,749) | 22,998 (train 18,399 / val 4,599) |
+| Total box instances | 174,995 | 195,425 |
+| Classes w/ 0 instances | 0 | 0 |
+| Min / max instances per class | 14 / 79,840 | 14 / 91,476 |
+| Imbalance ratio (max/min) | 5702.9x | 6534.0x |
+| Classes under 50-instance floor | `hammer`, `toolbox`, `tape measure`, `passport`, `game controller` (unchanged — these are the sparse *novel* classes, not affected by `--coco-sample-size`, which only draws from COCO) | same |
 
-| Metric | Value |
-|---|---|
-| Total images | 18,748 (train 14,999 / val 3,749) |
-| Total box instances | 174,995 |
-| Classes | 48 (zero with 0 instances) |
-| Min / max instances per class | 14 / 79,840 |
-| Imbalance ratio (max/min) | 5702.9x |
-| Classes under 50-instance floor | `hammer`, `toolbox`, `tape measure`, `passport`, `game controller` |
+Full per-class breakdowns live in each run's `eda_report/class_distribution.csv`
+on Kaggle, not duplicated here. `--coco-sample-size` raising 750→5000 did
+measurably help the sparse *kept* classes specifically (not reflected in
+the floor table above, which only tracks novel classes): `scissors`
+223→320 instances (+43.5%), `toothbrush` 191→325 (+70.2%), `book`
+4,300→5,752 (+33.8%) — real but more modest than the ~6.7x sample-size
+increase alone would suggest, since the unchanged LVIS-overlap portion
+already contributed part of the original counts.
 
-Full per-class breakdown lives in `eda_report/class_distribution.csv` on
-Kaggle, not duplicated here.
+## Training results — own validation split
 
-## Training results — notebook 2 (kernel version 3, 2026-11-06)
+| Run | Best epoch | Total epochs (early-stopped) | Training time | mAP50 | mAP50-95 |
+|---|---|---|---|---|---|
+| 1 — baseline | 40 | 55 | 4.94hr | 0.254 | 0.171 |
+| 2 — sample5000 | 48 | 63 | 6.56hr | 0.250 | 0.164 |
+| 3 — freeze=None | 71 | 86 | 7.61hr | 0.243 | 0.164 |
 
-**Early-stopped at epoch 55** (`patience=15`, no improvement after epoch
-40) — **4.939 hours** on a single T4. `cls_pw=0.5` confirmed active
-throughout (verified in the saved checkpoint's own `train_args`).
+Neither sweep variant beat the baseline on its own novel-class metric —
+run 3 needed ~1.75x the epochs to reach a comparable point, consistent
+with unfreezing the backbone slowing convergence as expected. The real
+test of both variants is the forgetting-check below, not this number.
 
-Overall (`best.pt`, on `lostfound/`'s own val split — 3,749 images, 34,773
-instances):
+**Baseline per-class detail** (unchanged by the sweep, since neither
+variant touches the novel classes' training data or weighting):
+well-learned — `person` (mAP50 0.754), `cat` (0.719), `laptop` (0.708).
+Weak novel classes: `passport`/`game controller` did surprisingly well
+despite only 3 training instances each (0.574/0.335 mAP50); `hammer`/
+`tape measure`/`toolbox` effectively didn't learn (0.09/0.01/0.001).
+Also weak despite being above the 50-instance floor: `battery`,
+`pliers`, `screwdriver`, `wrench`, `stapler`, `briefcase` — worth a
+Roboflow fallback (guide Section 3.2) for these alongside the 5 flagged
+ones if they matter for the product.
 
-| Metric | Value |
-|---|---|
-| Precision | 0.379 |
-| Recall | 0.265 |
-| mAP50 | 0.254 |
-| mAP50-95 | 0.171 |
+## Catastrophic-forgetting check — matched apples-to-apples
 
-**Well-learned classes** (common, high instance count): `person` (mAP50
-0.754), `cat` (0.719), `laptop` (0.708), `teddy bear` (0.627).
+Same exact 5,000 COCO val2017 images for every model, never used in any
+run's training: base `yolo26n.pt` scored with original 80-class ids,
+each fine-tuned model scored with the same 4,952 label files remapped to
+the 20 kept classes (`prepare_dataset.py`'s own `COCO_OLD_TO_NEW`
+mapping — remapped-image count of 3,471 matches notebook 1's own
+forgetting-check count exactly, confirming the remap is correct).
+Downloaded COCO val2017 directly (~1GB: `images.cocodataset.org/zips/val2017.zip`
++ the Ultralytics labels zip) rather than through `coco.yaml`'s own
+20GB train+val download block. Notebook 3's own forgetting-check (75
+pre-filtered images, and can't score base YOLO directly since its yaml
+remaps ground truth to the compressed 0-19 scheme) is superseded by this
+for anything comparing against base YOLO.
 
-**The 5 EDA-flagged sparse classes — mixed, mostly as predicted:**
+| | Base `yolo26n.pt` | Run 1 (baseline) | Run 2 (sample5000) | Run 3 (freeze=None) |
+|---|---|---|---|---|
+| mAP50 (avg, 20 kept classes) | 0.510 | 0.403 | *pending* | *pending* |
+| mAP50-95 (avg, 20 kept classes) | 0.365 | 0.272 | *pending* | *pending* |
+| Relative change (mAP50-95) | — | −25.3% | *pending* | *pending* |
 
-| Class | Instances | mAP50 | mAP50-95 |
-|---|---|---|---|
-| `passport` | 3 | 0.574 | 0.527 |
-| `game controller` | 3 | 0.335 | 0.335 |
-| `hammer` | 13 | 0.091 | 0.044 |
-| `tape measure` | 17 | 0.011 | 0.005 |
-| `toolbox` | 6 | 0.001 | 0.0001 |
+*Runs 2/3's matched comparison is running locally as of this update —
+replace once complete.*
 
-`passport`/`game controller` did surprisingly well despite tiny counts
-(likely simple, visually distinct appearance) — `hammer`/`tape measure`/
-`toolbox` effectively didn't learn. **Other weak classes not caught by
-the 50-instance floor:** `battery` (32 inst., mAP50 0.002), `pliers` (18,
-0.040), `screwdriver` (18, 0.060), `wrench` (15, 0.066), `stapler` (15,
-0.090), `briefcase` (16, 0.034) — worth tightening the floor or adding a
-Roboflow fallback (Section 3.2) for these alongside the originally
-flagged 5 before relying on this model for those classes specifically.
+**Baseline's regression is real but very uneven, not uniform** — this is
+the actual finding that motivated the sweep:
 
-Full 48-class breakdown + training curves: `runs/lostfound_yolo26n/` in
-notebook 2's committed Output (`results.csv`, `results.png`,
-`weights/{best,last}.pt`, both 5.4MB).
-
-## Eval results — notebook 3 (kernel version 3, 2026-11-06)
-
-This is the forgetting-check + novel-class sanity gate, not the real
-golden-set benchmark (`finetuning/evaluate.py`, separate, needs the
-self-captured photos — see "Open question" below). Completed cleanly,
-no errors.
-
-**Novel-class sanity** (fine-tuned `best.pt`, on `lostfound/`'s own val
-split): mAP50=0.254, mAP50-95=0.171 — identical to notebook 2's own final
-validation (same model, same split, just re-confirmed). Per-class numbers
-for the 28 novel classes match training's own breakdown exactly.
-
-**Catastrophic-forgetting check — true apples-to-apples, matched sample.**
-
-Notebook 3's own forgetting-check yaml only used a 75-image sample and
-remaps ground truth to this project's compressed 0-19 scheme, which
-doesn't line up with base YOLO's standard 80-class output past index 1
-(`person`/`bicycle` coincide, everything else diverges) — so base YOLO
-can't be scored against that yaml directly, and 75 images isn't the
-full picture either way. Built a proper matched comparison instead, same
-exact 5,000 COCO val2017 images for both models (downloaded directly —
-`images.cocodataset.org/zips/val2017.zip` + the Ultralytics labels zip,
-~1GB total, not the full 20GB train+val bundle `coco.yaml`'s own download
-block would otherwise pull): base `yolo26n.pt` scored with original
-80-class ids, fine-tuned `best.pt` scored with the same 4,952 label files
-remapped to the 20 kept classes (reusing `prepare_dataset.py`'s own
-`COCO_OLD_TO_NEW` mapping — remapped-image count, 3,471, matches notebook
-1's own forgetting-check count exactly, confirming the remap is correct).
-
-| | Base `yolo26n.pt` | Fine-tuned `best.pt` | Relative change |
-|---|---|---|---|
-| mAP50 (avg over 20 kept classes) | 0.510 | 0.403 | **−20.9%** |
-| mAP50-95 (avg over 20 kept classes) | 0.365 | 0.272 | **−25.3%** |
-
-Both scored on the identical 5,000 images, same `imgsz=640`. (An earlier,
-mismatched-sample estimate on this same data put the mAP50-95 drop at
-~35% — that was comparing a 75-image pre-filtered subset against the
-full 4,952; the matched number above supersedes it.)
-
-**The average hides a wide spread — this is the real finding:**
-
-| Class | Train instances | mAP50-95 rel. change |
+| Class | Train instances (run 1) | mAP50-95 rel. change (run 1) |
 |---|---|---|
 | `person` | 64,070 | **−7.8%** (barely touched) |
 | `laptop` | 1,094 | −9.1% |
@@ -201,79 +204,24 @@ full 4,952; the matched number above supersedes it.)
 | `scissors` | 180 | **−66.0%** |
 | `toothbrush` | 143 | **−66.9%** (worst) |
 
-Full 20-class table (including the 9 classes not shown above — all in
-the −18% to −33% range) is in this session's working data, not
-duplicated here.
+(9 classes not shown: all in the −18% to −33% range.) `scissors`/
+`toothbrush` — worst-hit — also have by far the fewest training
+instances among the 20 kept classes, a real, verified correlation. That
+doesn't fully explain `book`/`remote`/`suitcase` (decent instance counts,
+still hit hard) — a plausible but **unconfirmed** hypothesis is visual
+confusability with newly-added novel classes that look similar (`book`
+vs. `notebook`/`passport`; `suitcase` vs. `toolbox`/`briefcase`); would
+need a confusion-matrix look to verify, not asserted as fact here.
 
-**Reading this:** a real, non-trivial regression, not a collapse —
-nothing is near-zero — but the forgetting is very uneven, not uniform.
-`scissors`/`toothbrush` (worst-hit) also have by far the fewest training
-instances among the 20 kept classes (180/143, vs. `person`'s 64,070),
-a real correlation — fewer examples of a kept class surviving the merge
-means less to anchor it against forgetting. That doesn't fully explain
-it though: `book` (3,400 instances, not sparse) still dropped 44%, and
-`remote`/`suitcase` similarly — plausibly visual confusability with
-newly-added novel classes that look similar (`book` vs. the new
-`notebook`/`passport`; `suitcase` vs. the new `toolbox`/`briefcase`),
-but that's a hypothesis, not confirmed — would need a confusion-matrix
-look to verify, not asserted here as fact.
-
-**Open question to resolve before golden-set work:** is this acceptable
-for gaining 28 new classes, given some kept classes (`scissors`,
-`toothbrush`, `book`, `remote`, `suitcase`) lost a lot? Options: accept
-it and note the limitation, raise `--coco-sample-size` beyond 750
-specifically to give these classes more training weight, or revisit
-`freeze=10` → `freeze=None`. Worth deciding before golden-set
-photography, not after.
-
-## Hyperparameter sweep (2026-11-06, in progress)
-
-Started in response to the uneven forgetting found above — specifically
-to test two hypotheses about *why* `scissors`/`toothbrush`/`book`/
-`remote`/`suitcase` regressed so much more than the average. All variants
-keep `cls_pw=0.5` fixed (it's free, no reason to toggle it) and
-`epochs=100`/`patience=15`/`optimizer=AdamW`/`lr0=0.001` unchanged.
-
-| Run | `freeze` | `--coco-sample-size` | Dataset images | Status |
-|---|---|---|---|---|
-| **1 — baseline** | 10 | 750 | 18,748 | ✅ done — see Training/Eval results above |
-| **2 — bigger COCO sample** | 10 | 5000 | pending (prep running) | running |
-| **3 — unfrozen backbone** | None | 750 (same dataset as run 1) | 18,748 | running |
-
-**Run 2's hypothesis:** `merge_and_sample()` draws `coco_sample_size`
-COCO-only images **uniformly at random** from the ~64,696-image "has a
-kept class, no novel class" pool — not stratified by class. Rare kept
-classes (`scissors`: 223 total instances, `toothbrush`: 191) are
-under-represented in a small random draw purely because they're rare in
-that pool, independent of training quality. Raising the sample ~6.7x
-should proportionally raise their representation too. This is a blunt
-fix (also pulls in more of the already-dominant classes like `person`),
-not the surgical fix (class-stratified sampling) — noted as a possible
-follow-up, not implemented.
-
-**Run 3's hypothesis:** `freeze=10` only trains the backbone's attention
-block + neck + head (56.62% of params). Letting the full backbone adapt
-might recover some of what's lost on kept classes, at the cost of more
-compute/epoch and higher overfitting risk on this still-modest dataset.
-
-**Results — filled in once each run's training + forgetting-check complete:**
-
-| Run | mAP50-95 (novel, lostfound val) | mAP50-95 (forgetting-check, matched 5,000-img) | vs. base `yolo26n.pt` (0.365) | Training time |
-|---|---|---|---|---|
-| 1 — baseline | 0.171 | 0.272 | −25.3% | 4.94hr |
-| 2 — sample5000 | pending | pending | pending | pending |
-| 3 — freeze=None | pending | pending | pending | pending |
-
-Per-class `scissors`/`toothbrush` mAP50-95 (the worst-hit pair) will be
-tracked specifically across runs once available, since that's the direct
-test of run 2's hypothesis.
+**Once runs 2/3's numbers land**, the direct test is whether `scissors`/
+`toothbrush` specifically improved — that's what each sweep variant's
+hypothesis predicts, not just the aggregate average.
 
 ## GPU budget tracking
 
-Kaggle free tier: ~30 GPU-hr/week (T4/P100). Spent: ~4.94hr (notebook 2's
-successful baseline training) + ~1 min (its failed first attempt) =
-~4.96hr so far. Run 2 (sample5000) adds ~22.6% more images per epoch on
-top of the baseline's pace; run 3 (freeze=None) trains more parameters
-per step, so expect somewhat longer than baseline for each — actual
-times will replace this estimate once both complete. Notebook 3 (eval)
-costs zero GPU time regardless of variant (`enable_gpu: false`).
+Kaggle free tier: ~30 GPU-hr/week (T4/P100). Spent so far this week:
+**~19.11hr** — run 1 (4.94hr) + run 2 (6.56hr) + run 3 (7.61hr), plus a
+negligible ~1 min from run 3's first attempt that failed fast on the
+mount-path bug before any epoch ran. ~11hr of quota remains if further
+experiments are needed. Notebook 1 (dataset prep) and notebook 3 (eval)
+cost zero GPU time regardless of variant (`enable_gpu: false` for both).
