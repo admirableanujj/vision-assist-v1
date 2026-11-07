@@ -1,16 +1,25 @@
-# Testing YOLO / YOLOE — Locally and in GitHub Codespaces
+# Testing the Vision Engines — Locally and in GitHub Codespaces
 
 A quick, tested path to actually seeing the vision engine work, in both
 environments. Covers two ways to test: a **direct WebSocket check** (fastest,
 bypasses login entirely — good for confirming the engine itself works) and
-the **full browser flow** (login → camera → live detections).
+the **full browser flow** (login → camera → live detections). Three engines
+exist (`backend/app/engines/vision/vision_engine.py`): **YOLO** (base,
+COCO-pretrained) and **Fine-tuned YOLO** (this project's own 48-class
+lostfound checkpoint) are both reachable live from the UI's header toggle,
+no restart needed; **YOLOE** (open-vocabulary) is config-only now — not in
+the UI toggle, only reachable via `VISION_MODEL_TYPE=yoloe` + a restart
+(see "Switching to YOLOE" below).
 
 ## Quick start (GitHub Codespaces)
 
 Already inside a Codespace opened from this repo (so no `git clone` needed).
 Set your machine to **4-core/16GB** first (command palette → "Codespaces:
-Change Machine Type") — torch + ultralytics + YOLOE's CLIP dependency is
-tight on the 2-core/8GB default.
+Change Machine Type") — `get_engine()` can hold up to 3 ultralytics models
+resident at once (`yolo`, `finetuned`, `yoloe`, each loaded lazily the first
+time it's actually used), and YOLOE additionally pulls in a CLIP dependency;
+either one alone is tight on the 2-core/8GB default, let alone several
+resident together.
 
 **Step 1** — env, secrets, build+start, all in one paste. `precheck_db.py`
 now creates the full schema and seeds test accounts automatically on first
@@ -59,7 +68,8 @@ ws.close()
 
 Expect `{"status": "success", "detections": [...]}`. The rest of this guide
 below is the same workflow spelled out step by step (useful for local Docker
-setup, understanding what the quick start does, or switching to YOLOE).
+setup, understanding what the quick start does, trying the fine-tuned
+engine, or switching to YOLOE).
 
 ## DB seeding — automatic, no workaround needed
 
@@ -141,7 +151,10 @@ pip install websocket-client   # one-off, local machine
 python3 -c "
 import websocket, json
 
-ws = websocket.create_connection('ws://localhost:8000/ws/vision')
+# ?engine= is optional — omit it for VISION_MODEL_TYPE's startup default,
+# or pass 'yolo' / 'finetuned' explicitly (YOLOE isn't a valid value here;
+# see 'Switching to YOLOE' below for that one).
+ws = websocket.create_connection('ws://localhost:8000/ws/vision?engine=finetuned')
 with open('test_photo.jpg', 'rb') as f:   # any real JPEG with a person/object in it
     ws.send_binary(f.read())
 print(json.loads(ws.recv()))
@@ -149,10 +162,10 @@ ws.close()
 "
 ```
 
-Expect `{\"status\": \"success\", \"detections\": [...]}`. An empty
-`detections` list just means nothing in that photo scored above the 0.5
-confidence threshold — try a clearer/closer photo before assuming something's
-broken.
+Expect `{\"status\": \"success\", \"engine\": \"finetuned\", \"detections\": [...]}`.
+An empty `detections` list just means nothing in that photo scored above the
+0.5 confidence threshold — try a clearer/closer photo before assuming
+something's broken.
 
 ### Option B — full browser flow
 
@@ -168,7 +181,30 @@ docker logs vision_assist_api | grep -i "VisionEngine loaded"
 # "YOLOVisionEngine loaded '/opt/weights/yolo26n.pt' (conf>=0.5)." by default
 ```
 
+### Trying the Fine-tuned YOLO engine (no restart needed)
+
+Click **Fine-tuned YOLO** in the header toggle, right next to **YOLO** —
+first click after boot takes a moment (constructing the engine); after
+that it's instant, and `get_engine()` keeps both cached so switching back
+and forth never re-pays the load cost. Confirm the real checkpoint loaded:
+
+```bash
+docker logs vision_assist_api | grep -i "VisionEngine loaded"
+# add, once you've clicked the toggle:
+# "YOLOVisionEngine loaded '/opt/weights/lostfound_yolo26n_best.pt' (conf>=0.5)."
+```
+
+Point the camera at something in the 20 kept COCO classes (`person`,
+`backpack`, `cell phone`, ...) and something COCO never had (`keys`,
+`wallet`, `screwdriver`, ...) — the fine-tuned model should catch both; base
+YOLO will only ever catch the first kind. That contrast is the whole point
+of the toggle — see `FINE_TUNING_YOLO_GUIDE.md` for the full 48-class list
+and the training/eval writeup behind this checkpoint.
+
 ### Switching to YOLOE
+
+Not in the live UI toggle — YOLOE is reachable only via `VISION_MODEL_TYPE`
+plus a backend restart, same as before this project had a fine-tuned model:
 
 ```bash
 echo "VISION_MODEL_TYPE=yoloe" >> .env
@@ -177,11 +213,12 @@ docker logs vision_assist_api | grep -i "VisionEngine loaded"
 # "YOLOEVisionEngine loaded '/opt/weights/yoloe-26n-seg.pt' with classes=[...] (conf>=0.5)."
 ```
 
-Re-run Option A or B with the same photo. Expect `keys`/`wallet`/`sunglasses`
-to become detectable (if present in frame) and everyday classes both engines
-know (e.g. `person`) to score visibly lower than YOLO reported — see
-`YOLO_VS_YOLOE_GUIDE.md` for why. Switch back by removing the line from `.env`
-and restarting `backend` again.
+Re-run Option A (`?engine=yoloe` isn't accepted by `/ws/vision` — this env
+var is what actually selects it) or Option B with the same photo. Expect
+`keys`/`wallet`/`sunglasses` to become detectable (if present in frame) and
+everyday classes both engines know (e.g. `person`) to score visibly lower
+than YOLO reported — see `YOLO_VS_YOLOE_GUIDE.md` for why. Switch back by
+removing the line from `.env` and restarting `backend` again.
 
 ## GitHub Codespaces
 
