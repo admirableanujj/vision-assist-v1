@@ -1,6 +1,6 @@
 {
   "id": "dceshubh/visionassist-02-train-sample5000",
-  "title": "VisionAssist 02 - Train (coco-sample-size=5000 dataset)",
+  "title": "VisionAssist 02 Train Sample5000",
   "code_file": "02_train_sample5000.ipynb",
   "language": "python",
   "kernel_type": "notebook",
