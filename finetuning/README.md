@@ -39,6 +39,10 @@ rationale on what was dropped and why.
   | **Trainable** | 267 | **1,456,536** | **56.62%** |
 
   Trainable blocks: 10 (`C2PSA` attention), 13/16/17/19/20/22 (neck), 23 (`Detect` head).
+  This table is a summary, intentionally duplicated here for a quick
+  reference — Guide Section 4 has the full per-freeze-depth comparison
+  (`freeze=None`/`10`/`23`) and the exact reasoning for why `10` was
+  chosen; treat that as the source of truth if these two ever disagree.
 - **Classes**: 48 total.
   - **20 kept from COCO** (new indices 0–19): `person`, `bicycle`, `backpack`, `umbrella`, `handbag`, `tie`, `suitcase`, `bottle`, `cup`, `book`, `scissors`, `teddy bear`, `toothbrush`, `laptop`, `mouse`, `remote`, `keyboard`, `cell phone`, `cat`, `dog`.
   - **28 new** (indices 20–47): `keys`, `wallet`, `sunglasses`, `glasses`, `watch`, `earphone`, `flashlight`, `glove`, `belt`, `pen`, `notebook`, `calculator`, `stapler`, `battery`, `shoe`, `jacket`, `briefcase`, `passport`, `scarf`, `hat`, `screwdriver`, `wrench`, `pliers`, `hammer`, `toolbox`, `tape measure`, `ladder`, `game controller`. Every one of these is backed by a real, verified LVIS class id — see `prepare_dataset.py`'s `NOVEL_CLASSES` or Guide Section 2's table.
