@@ -130,11 +130,51 @@ Full 48-class breakdown + training curves: `runs/lostfound_yolo26n/` in
 notebook 2's committed Output (`results.csv`, `results.png`,
 `weights/{best,last}.pt`, both 5.4MB).
 
-## Eval results — notebook 3
+## Eval results — notebook 3 (kernel version 3, 2026-11-06)
 
-Running (kernel version 3) — this is the forgetting-check + novel-class
-sanity gate, not the real golden-set benchmark (`finetuning/evaluate.py`,
-separate, needs self-captured photos). Results pending.
+This is the forgetting-check + novel-class sanity gate, not the real
+golden-set benchmark (`finetuning/evaluate.py`, separate, needs the
+self-captured photos — see "Open question" below). Completed cleanly,
+no errors.
+
+**Novel-class sanity** (fine-tuned `best.pt`, on `lostfound/`'s own val
+split): mAP50=0.254, mAP50-95=0.171 — identical to notebook 2's own final
+validation (same model, same split, just re-confirmed). Per-class numbers
+for the 28 novel classes match training's own breakdown exactly.
+
+**Catastrophic-forgetting check, with a real baseline this time:**
+
+| | mAP50 | mAP50-95 | Images | Source |
+|---|---|---|---|---|
+| Fine-tuned (20 kept classes, remapped) | 0.416 | 0.237 | 75 (sampled) | notebook 3, COCO val2017-derived |
+| **Base `yolo26n.pt`** (same 20 classes, original COCO ids) | **0.510** | **0.365** | 4,952 (full val2017) | local run, see below |
+| Relative change | −18.4% | **−35.1%** | | |
+
+The base-model number wasn't in the notebook — the forgetting-check yaml
+remaps ground truth to this project's compressed 0-19 scheme, which
+doesn't line up with base YOLO's standard 80-class output past index 1
+(`person`/`bicycle` coincide, everything else diverges), so base YOLO
+can't be scored against that yaml directly. Ran base `yolo26n.pt` locally
+instead against the full standard COCO val2017 (downloaded directly —
+`images.cocodataset.org/zips/val2017.zip` + the Ultralytics labels zip,
+~1GB total, not the full 20GB train+val bundle `coco.yaml`'s own download
+block would otherwise pull), then averaged the 20 kept classes' AP from
+that 80-class result.
+
+**Reading this: a real, non-trivial regression, not a collapse.** A
+~35% relative drop in mAP50-95 on the kept classes is the expected cost
+of narrowing `nc` 80→48 with `freeze=10` (per the guide's own framing of
+what counts as acceptable vs. a collapse) — nothing here is near-zero.
+**Caveat:** the two sides aren't a perfectly matched sample (75
+pre-filtered images vs. the full 4,952-image val2017), so treat the
+exact percentage as directional, not a precise number — the real,
+matched three-way comparison is the golden-set benchmark, not this.
+
+**Open question to resolve before golden-set work:** is ~35% an
+acceptable tradeoff for gaining 28 new classes, or does it justify
+revisiting `freeze=10` → `freeze=None` (train more of the backbone) or
+raising `--coco-sample-size` beyond 750 in a re-run? Worth deciding
+before spending time on golden-set photography, not after.
 
 ## GPU budget tracking
 
