@@ -27,16 +27,24 @@ populated its standard LVIS and COCO dataset layout on disk — this script
 only filters/remaps/merges, it doesn't download either dataset itself.
 Trigger that first:
 
-    from ultralytics import YOLO
-    model = YOLO("yolo26n.pt")
-    model.train(data="lvis.yaml", epochs=1)  # downloads + converts to YOLO format, then stop
-    model.train(data="coco.yaml", epochs=1)  # same, for COCO
+    from ultralytics.data.utils import check_det_dataset
+    check_det_dataset("coco.yaml")  # COCO first - LVIS reuses its images, see Guide Section 3
+    check_det_dataset("lvis.yaml")
 
-(Letting one epoch start is the simplest reliable way to force Ultralytics'
-download/convert step to run; interrupt after it logs the first epoch, or
-just let it run — the throwaway checkpoint is harmless.) That leaves
-Ultralytics' standard dataset root (wherever its settings.yaml points — on
-Kaggle this defaults under /kaggle/working) populated with:
+check_det_dataset() is the exact function model.train() calls internally to
+download+verify a dataset, BEFORE it ever builds a model or starts
+training — calling it directly gets the same download/convert step with
+zero training compute. An earlier version of this doc said to use
+model.train(data=..., epochs=1) and "interrupt after it logs the first
+epoch" instead: that's fine for a human watching, but an unattended
+`kaggle kernels push` run has nobody to interrupt it — confirmed live, it
+silently trained one full epoch over all 118,287 COCO train2017 images on
+CPU (~17hr projected) before this was caught (see
+finetuning/kaggle/RUN_LOG.md's Finding 6). `01_dataset_prep_and_eda.ipynb`
+already uses check_det_dataset(); this docstring just wasn't updated to
+match until now. That leaves Ultralytics' standard dataset root (wherever
+its settings.yaml points — on Kaggle this defaults under /kaggle/working,
+redirected to /kaggle/tmp by the notebook, see Finding 4) populated with:
 
     <datasets_root>/lvis/images/{train2017,val2017}/*.jpg
     <datasets_root>/lvis/labels/{train2017,val2017}/*.txt   # YOLO format, LVIS's 1203-class IDs
@@ -301,7 +309,7 @@ def main():
     parser.add_argument("--lvis-root", required=True, type=Path, help="Path to Ultralytics' downloaded lvis/ dataset root")
     parser.add_argument("--coco-root", required=True, type=Path, help="Path to Ultralytics' downloaded coco/ dataset root")
     parser.add_argument("--output-dir", default=Path("./lostfound"), type=Path)
-    parser.add_argument("--coco-sample-size", type=int, default=5000, help="Max COCO train2017 images to fold in for the 20 kept classes, beyond whatever LVIS candidates already cover. 5000 (not the original 500-1000 guess) is the measured sweet spot: finetuning/kaggle/RUN_LOG.md's hyperparameter sweep found the smaller default starved the rarest kept classes (scissors/toothbrush) of training images, and 5000 improved the forgetting-check on every one of the 20 kept classes with only a marginal novel-class cost")
+    parser.add_argument("--coco-sample-size", type=int, default=5000, help="Max COCO train2017 images to fold in for the 20 kept classes, beyond whatever LVIS candidates already cover. 5000 (not the original default of 750, itself picked from Section 6's un-measured 500-1000 guess) is the measured sweet spot: finetuning/kaggle/RUN_LOG.md's hyperparameter sweep found 750 starved the rarest kept classes (scissors/toothbrush) of training images, and 5000 improved the forgetting-check on every one of the 20 kept classes with only a marginal novel-class cost")
     parser.add_argument("--val-fraction", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()

@@ -301,23 +301,27 @@ model.train(
 ```
 
 `freeze=10` is the right starting point for "small dataset, similar domain to
-COCO" — Ultralytics' own guidance. The actual merged dataset (from the real
-`01_dataset_prep_and_eda.ipynb` run, 2026-11-06): 18,748 images (14,999
-train / 3,749 val), 174,995 box instances, 48 classes, **zero classes with
-zero instances**. Fall back to `freeze=None` if new-class mAP stays weak
-after ~50 epochs — safer here since the dataset includes mixed-in COCO
-examples (Section 6).
+COCO" — Ultralytics' own guidance. The actual merged dataset for the
+deployed run (`--coco-sample-size 5000`, `01_dataset_prep_and_eda.ipynb`,
+2026-11-07 — see `finetuning/kaggle/RUN_LOG.md` for the full record,
+including the earlier `--coco-sample-size 750` baseline these numbers
+superseded): 22,998 images (18,399 train / 4,599 val), 195,425 box
+instances, 48 classes, **zero classes with zero instances**. Fall back to
+`freeze=None` if new-class mAP stays weak after ~50 epochs — safer here
+since the dataset includes mixed-in COCO examples (Section 6); note the
+sweep's own `freeze=None` variant was tried and made the forgetting check
+*worse* on average, so this isn't a free lever — see Section 9/`RUN_LOG.md`.
 
-**`cls_pw=0.5`** — the same real EDA run found a 5702.9x max/min
-instance-count ratio, with 5 classes under the 50-instance floor (`hammer`,
-`toolbox`, `tape measure`, `passport`, `game controller`; worst at 14
-instances). `cls_pw` is a real, built-in Ultralytics hyperparameter —
+**`cls_pw=0.5`** — the EDA run found a 6534.0x max/min instance-count
+ratio, with 5 classes under the 50-instance floor (`hammer`, `toolbox`,
+`tape measure`, `passport`, `game controller`; worst at 14 instances).
+`cls_pw` is a real, built-in Ultralytics hyperparameter —
 verified directly against the pinned `ultralytics==8.4.106` wheel's
 `DetectionTrainer.compute_class_weights()` (`models/yolo/detect/train.py`) —
 that computes inverse-class-frequency weights straight from this run's own
 training label counts and applies them to the classification loss,
 normalized to mean 1.0. Default is `0.0` (off); `1.0` is full inverse
-frequency. Using `0.5` (dampened) rather than `1.0`: at a 5702.9x ratio, full
+frequency. Using `0.5` (dampened) rather than `1.0`: at a 6534.0x ratio, full
 inverse weighting risks destabilizing the well-represented classes for a
 handful of classes that simply don't have enough real examples to learn well
 regardless of loss weight. Enabling it costs zero extra GPU time (it only

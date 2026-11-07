@@ -127,7 +127,7 @@ tempting to make it the default. Don't, for two concrete reasons:
 2. **It's still not a substitute for fine-tuning if the home/garage items it
    covers need to work *reliably*** — YOLOE is the fast, zero-effort option
    to prototype with; a properly fine-tuned model (see
-   `FINE_TUNING_YOLO_GUIDE.md` — implementation ready in `finetuning/`, not
-   yet executed) is the higher-accuracy path on a curated 48-class
-   vocabulary if YOLOE's zero-shot results prove insufficient for real use,
-   not just a demo.
+   `FINE_TUNING_YOLO_GUIDE.md` — done and deployed, selectable in the live
+   UI as "Fine-tuned YOLO") is the higher-accuracy path on a curated
+   48-class vocabulary, already live, for exactly the cases where YOLOE's
+   zero-shot results prove insufficient for real use, not just a demo.

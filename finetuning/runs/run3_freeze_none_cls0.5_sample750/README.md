@@ -28,6 +28,13 @@ slower to converge than run 1 (more trainable parameters), and needed
 
 - Novel-class (lostfound val): mAP50 0.243, mAP50-95 0.164 (vs. run 1's
   0.254 / 0.171 — slightly lower, despite training far longer)
-- Forgetting-check (matched 5,000-image COCO val2017 comparison): see
-  `finetuning/kaggle/RUN_LOG.md`'s Hyperparameter sweep section for the
-  full per-class table and direct comparison against run 1.
+- Forgetting-check (matched 5,000-image COCO val2017 comparison): mAP50
+  0.368, mAP50-95 0.248 — a **−32.0% relative drop** vs. base
+  `yolo26n.pt`, *worse* than run 1's −25.3%. `toothbrush` collapsed to
+  −92.5% (mAP50-95 0.015, essentially destroyed) and `dog` to −49.5%.
+  **Refutes this run's hypothesis** — unfreezing the backbone let it
+  drift further from its COCO pretraining instead of recovering it.
+  Discarded; not deployed.
+
+Full write-up, full per-class table, and the comparison against run 2:
+`finetuning/kaggle/RUN_LOG.md`.

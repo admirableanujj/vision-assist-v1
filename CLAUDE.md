@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-VisionAssist is an AI-powered voice+vision Lost & Found assistant: a FastAPI backend + React/Vite frontend communicating over REST + WebSockets, with real-time object detection (YOLO/YOLOE), speech I/O, and LLM-driven intent handling.
+VisionAssist is an AI-powered voice+vision Lost & Found assistant: a FastAPI backend + React/Vite frontend communicating over REST + WebSockets, with real-time object detection (base YOLO / this project's own fine-tuned YOLO, plus YOLOE retained as a config-only third option — see Key Design Patterns below), speech I/O, and LLM-driven intent handling.
 
 **Entry point:** `backend/main.py` — a FastAPI app (`uvicorn main:app`) that runs DB migrations/seeding on startup (`precheck_db.py`) then serves REST + WebSocket routes. `precheck_db.py` creates the full schema if missing and, only when `users` is genuinely empty, seeds `test_user`/`test_user` and `admin`/`adminpassword123` — no manual DB setup is needed to log in.
 
@@ -33,6 +33,7 @@ Services (`docker-compose.yml`):
 | `frontend` | `vision_assist_web` | 3000 | React/Vite, nginx-served |
 | `postgres` | `vision_assist_db` | 5432 | User auth + item persistence |
 | `ollama` | `vision_assist_llm_local` | 11434 | Local LLM (llama3) |
+| `ollama-puller` | `vision_assist_ollm_puller` | — | One-shot sidecar, runs `ollama pull llama3` against the `ollama` service then exits — no app code depends on it directly |
 | `qdrant` | `vision_assist_qdrant` | 6333/6334 | Vector DB for semantic item search |
 
 ## Testing
@@ -54,13 +55,13 @@ vision-assist-v1/
 │   ├── precheck_db.py                # DB migrations + first-boot seeding (see below)
 │   └── app/
 │       ├── api/                      # HTTP + WebSocket routes
-│       │   ├── vision_routes.py      # /ws/vision — YOLO/YOLOE detection
+│       │   ├── vision_routes.py      # /ws/vision — YOLO/fine-tuned YOLO detection
 │       │   ├── audio_routes.py       # /ws/audio — STT + intent routing
 │       │   ├── auth_routes.py        # /api/v1/auth/login
 │       │   └── zone_routes.py        # /api/v1/zones, /items — zone inventory + item registration
 │       ├── core/                     # security.py, database.py, logging_config.py
 │       ├── engines/                  # Vision, voice, and ML/LLM engines
-│       │   ├── vision/               # YOLOVisionEngine + YOLOEVisionEngine + fallback
+│       │   ├── vision/               # YOLOVisionEngine (yolo + finetuned keys) + YOLOEVisionEngine + fallback
 │       │   ├── voice/                # Whisper STT + TTS
 │       │   └── ml/                   # Ollama, query classification, CLIP/Qdrant embeddings
 │       └── models/                   # Pydantic schemas (db_models.py, schemas.py)
@@ -69,7 +70,7 @@ vision-assist-v1/
         ├── App.jsx                   # Auth gate; routes to ZoneInventoryDashboard or CameraFeedDashboard
         ├── pages/
         │   ├── ZoneInventoryDashboard.jsx  # Default view post-login — zones, registered items
-        │   └── CameraFeedDashboard.jsx     # Live vision feed + YOLO/YOLOE toggle, reached via "Camera Stream"
+        │   └── CameraFeedDashboard.jsx     # Live vision feed + YOLO/Fine-tuned YOLO toggle, reached via "Camera Stream"
         ├── components/LoginModal.jsx
         └── hooks/
             ├── useVisionWS.js        # Webcam capture, /ws/vision client, canvas box rendering
@@ -85,11 +86,11 @@ Don't treat their presence as documentation of intended behavior.
 
 ```
 Vision: browser webcam → useVisionWS.js captures a 640x480 JPEG every ~100ms
-  → WS /ws/vision?engine=yolo|yoloe&zone=... (raw JPEG bytes) → vision_routes.py
+  → WS /ws/vision?engine=yolo|finetuned&zone=... (raw JPEG bytes) → vision_routes.py
   → get_engine(engine).scan_frame(bytes)     # cached per engine, degrades to mock on failure
   → {"status": "success", "engine": "...", "zone": "...", "detections": [{label, confidence, box}, ...]}
   → useVisionWS.js draws boxes on its own <canvas> — the server never renders an annotated image
-  (CameraFeedDashboard.jsx's YOLO/YOLOE toggle changes `engine` and reconnects the socket — no restart)
+  (CameraFeedDashboard.jsx's YOLO/Fine-tuned YOLO toggle changes `engine` and reconnects the socket — no restart)
 
 Audio: browser mic → useAudioWS.js → WS /ws/audio (webm blob) → audio_routes.py
   → transcribe via STT_PROVIDER (faster-whisper default, or whisper/openai)

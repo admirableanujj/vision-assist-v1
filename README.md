@@ -76,19 +76,18 @@ Then open `http://localhost:3000`. For a verified setup walkthrough — local
 or GitHub Codespaces, including test credentials — see
 **`docs/TESTING_LOCAL_AND_CODESPACES.md`**.
 
-## Vision: YOLO / YOLOE
+## Vision: YOLO / Fine-tuned YOLO
 
-Object detection defaults to YOLO26n (COCO's 80 classes). YOLOE, an
-open-vocabulary alternative, can detect additional classes (e.g. `keys`,
-`wallet`, `sunglasses`, and a curated ~300-item home vocabulary — none of
-which are COCO classes) at a lower accuracy. Switch between them live from
-the camera dashboard's header toggle — no restart needed; the startup
-default is still set via `VISION_MODEL_TYPE` in `.env`. See
-**`docs/YOLO_VS_YOLOE_GUIDE.md`** for the full comparison and switching
-details, and **`docs/FINE_TUNING_YOLO_GUIDE.md`** (implementation in
-`finetuning/`, ready to run but not yet executed) for the plan to replace
-zero-shot detection with a real fine-tuned model on a curated 48-class
-home/garage lost-and-found vocabulary.
+Object detection defaults to YOLO26n (COCO's 80 classes). The live camera
+dashboard's header toggle switches between that base model and this
+project's own **fine-tuned** model — a curated 48-class home/garage
+lost-and-found vocabulary (20 kept COCO classes + 28 new ones, e.g.
+`keys`, `wallet`, `sunglasses`, `screwdriver`) — no restart needed. See
+**`docs/FINE_TUNING_YOLO_GUIDE.md`** for the full training/eval writeup
+(status: done and deployed — `finetuning/kaggle/RUN_LOG.md` has the
+complete experiment record) and **`docs/YOLO_VS_YOLOE_GUIDE.md`** for
+YOLOE, an open-vocabulary third option still in the codebase and usable
+via the `VISION_MODEL_TYPE=yoloe` env var, but not in the live UI toggle.
 
 ## Architecture
 

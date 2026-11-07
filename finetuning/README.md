@@ -171,9 +171,17 @@ forgetting-check mAP (fine-tuned model only), and latency (mean/p50/p95).
 Turn it into the comparison table + contact sheet described in Guide
 Section 7.4.
 
-### 5. Wire the checkpoint into the app
+### 5. Wire the checkpoint into the app — done
 
-Per Guide Section 9: host `best.pt` somewhere the backend container can fetch it at build time (Hugging Face Hub recommended — don't commit a `.pt` via normal git), add a download `RUN` step to `backend/Dockerfile` mirroring the existing weight pre-downloads, then set `FINE_TUNED_YOLO_MODEL_PATH` (not the shared `YOLO_MODEL_PATH` — see `CLAUDE.md`'s Key Design Patterns) in `docker-compose.yml`'s `backend` service. No application code changes needed beyond that.
+Per Guide Section 9, this step is complete: `best.pt` is committed
+directly to the repo (`backend/weights/lostfound_yolo26n_best.pt` — this
+repo's `.gitignore` doesn't exclude `*.pt`), `backend/Dockerfile` copies
+it into `/opt/weights/` with a local `COPY` step (no external hosting
+needed), and it's selectable live in the UI as a dedicated `"finetuned"`
+engine key, independent of `"yolo"` (not a `FINE_TUNED_YOLO_MODEL_PATH`
+swap of the shared `"yolo"` key — that design was reconsidered
+specifically so base and fine-tuned stay simultaneously comparable; see
+Guide Section 9 for the full reasoning).
 
 ## Updating notebooks on Kaggle without re-uploading
 

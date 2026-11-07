@@ -31,7 +31,13 @@ Early-stopped at epoch 63 (best: epoch 48), 6.56 hours on a T4.
 
 - Novel-class (lostfound val): mAP50 0.250, mAP50-95 0.164 (vs. run 1's
   0.254 / 0.171 — slightly lower, despite more training data)
-- Forgetting-check (matched 5,000-image COCO val2017 comparison): see
-  `finetuning/kaggle/RUN_LOG.md`'s Hyperparameter sweep section for the
-  full per-class table and the direct `scissors`/`toothbrush` comparison
-  against run 1 — that's the actual test of this run's hypothesis.
+- Forgetting-check (matched 5,000-image COCO val2017 comparison): mAP50
+  0.425, mAP50-95 0.291 — a −20.1% relative drop vs. base `yolo26n.pt`
+  (run 1's was −25.3%). **Improved every one of the 20 kept classes**,
+  including the direct test: `scissors` −66.0%→−52.1% (mAP50-95
+  0.101→0.142), `toothbrush` −66.9%→−62.5%. Confirms this run's
+  hypothesis — **this is the model now deployed in the app**
+  (`backend/weights/lostfound_yolo26n_best.pt`).
+
+Full write-up, full per-class table, and the comparison against run 3:
+`finetuning/kaggle/RUN_LOG.md`.
