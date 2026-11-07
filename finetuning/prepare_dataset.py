@@ -48,7 +48,7 @@ Usage:
         --lvis-root <datasets_root>/lvis \\
         --coco-root <datasets_root>/coco \\
         --output-dir ./lostfound \\
-        --coco-sample-size 750
+        --coco-sample-size 5000
 
 Produces:
     ./lostfound/images/{train,val}/*.jpg
@@ -301,7 +301,7 @@ def main():
     parser.add_argument("--lvis-root", required=True, type=Path, help="Path to Ultralytics' downloaded lvis/ dataset root")
     parser.add_argument("--coco-root", required=True, type=Path, help="Path to Ultralytics' downloaded coco/ dataset root")
     parser.add_argument("--output-dir", default=Path("./lostfound"), type=Path)
-    parser.add_argument("--coco-sample-size", type=int, default=750, help="Max COCO train2017 images to fold in for the 20 kept classes, beyond whatever LVIS candidates already cover (Section 6 recommends 500-1000)")
+    parser.add_argument("--coco-sample-size", type=int, default=5000, help="Max COCO train2017 images to fold in for the 20 kept classes, beyond whatever LVIS candidates already cover. 5000 (not the original 500-1000 guess) is the measured sweet spot: finetuning/kaggle/RUN_LOG.md's hyperparameter sweep found the smaller default starved the rarest kept classes (scissors/toothbrush) of training images, and 5000 improved the forgetting-check on every one of the 20 kept classes with only a marginal novel-class cost")
     parser.add_argument("--val-fraction", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()

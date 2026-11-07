@@ -1,10 +1,17 @@
 # Fine-Tuning YOLO26n: Plan
 
-**Status: implementation ready, not yet run.** The dataset-prep script,
-the three Kaggle notebooks, and the eval harness described below exist in
-`finetuning/` (see `finetuning/README.md` for exact run steps) — but no
-training job has actually been executed: no dataset downloaded, no
-checkpoint produced, nothing merged into the app's deployed weights.
+**Status: done, and deployed.** The dataset-prep script, the three Kaggle
+notebooks, and the eval harness described below exist in `finetuning/`
+(see `finetuning/README.md` for exact run steps). Three training
+variants were run and compared (`finetuning/kaggle/RUN_LOG.md` has the
+full record); the winner — `--coco-sample-size 5000`, `freeze=10`,
+`cls_pw=0.5` — is baked into the app as `backend/weights/lostfound_yolo26n_best.pt`
+and selectable in the live UI as the "Fine-tuned" detection engine
+(`app/engines/vision/vision_engine.py`'s `"finetuned"` key), alongside
+base YOLO for direct comparison. Still pending: the real three-way
+golden-set benchmark (`finetuning/evaluate.py`, base YOLO vs. YOLOE vs.
+this fine-tuned model on self-captured photos) — needs the golden set
+captured/annotated first (`finetuning/README.md` Step 4).
 
 ## 1. The problem, precisely
 
@@ -384,9 +391,14 @@ dropped 60 of COCO's classes (Section 2); "forgetting" how to detect a
 What actually matters is not regressing `person`/`backpack`/`cell phone`/
 etc. — the classes this product still cares about.
 
-`prepare_dataset.py` folds in a capped random sample (default 750,
-`--coco-sample-size`) of COCO `train2017` images containing at least one
-kept class, remapped to indices 0-19, into the merged training set. Keep
+`prepare_dataset.py` folds in a capped random sample (default **5000**,
+`--coco-sample-size` — raised from an original guess of 750 once the
+hyperparameter sweep in `finetuning/kaggle/RUN_LOG.md` measured that the
+smaller default starved the rarest kept classes, `scissors`/`toothbrush`,
+of training images; 5000 improved the catastrophic-forgetting check on
+every one of the 20 kept classes for only a marginal novel-class cost)
+of COCO `train2017` images containing at least one kept class, remapped
+to indices 0-19, into the merged training set. Keep
 `val2017` untouched by this step — reserved for the forgetting-check set in
 Section 7, built automatically by the separate
 `prepare_coco_forgetting_check.py` script (no manual annotation needed,
@@ -620,28 +632,39 @@ approaches the cap, the practical fix is to watch it via
 kaggle.com) well before the cap, not rely on this runbook triggering
 itself.
 
-## 9. Code changes needed in this repo once this is executed
+## 9. Code changes made to wire the fine-tuned model into the app
 
-`app/engines/vision/vision_engine.py` already resolves `YOLOVisionEngine`'s
-weights via `FINE_TUNED_YOLO_MODEL_PATH` (checked before the legacy shared
-`YOLO_MODEL_PATH`, which `YOLOEVisionEngine` also reads — use the
-fine-tuned-specific var here, **not** the shared one, since both engines can
-be resident in the same process via the live UI toggle; pointing the shared
-var at a fine-tuned checkpoint would make `YOLOEVisionEngine` try to load it
-too and silently fall back to mock detections). `ultralytics.YOLO()` accepts
-a local file path directly, and its boxes/confidence flow through the exact
-same `_UltralyticsScanMixin.scan_frame()` code already built for the
-pretrained model — no further changes to `vision_engine.py` itself are
-needed. What's actually needed:
+Done, not just planned. What actually shipped, since it ended up
+differing from the original plan in a few ways:
 
-1. Host the fine-tuned `.pt` file somewhere the container can reach (Hugging
-   Face Hub recommended — free, versioned, simplest). Don't commit the raw
-   `.pt` via normal git.
-2. Add a build-time fetch step to `backend/Dockerfile`, mirroring the existing
-   `yolo26n.pt`/`yoloe-26n-seg.pt` pre-download `RUN` steps.
-3. Point `FINE_TUNED_YOLO_MODEL_PATH` at it in `docker-compose.yml`'s
-   `backend` service — zero change to application code beyond what's
-   already there.
+1. **The `.pt` file is committed directly to this repo**
+   (`backend/weights/lostfound_yolo26n_best.pt`), not hosted on Hugging
+   Face Hub — this repo's `.gitignore` doesn't exclude `*.pt` (unlike the
+   old `vision-assist` repo), and a 5.4MB file committed once is simpler
+   than standing up external hosting for a capstone project. `backend/Dockerfile`
+   copies it into `/opt/weights/` (`COPY weights/lostfound_yolo26n_best.pt
+   /opt/weights/lostfound_yolo26n_best.pt`) the same way `yolo26n.pt`/
+   `yoloe-26n-seg.pt` are baked in — just a local `COPY` instead of a
+   build-time Ultralytics auto-download, since this checkpoint isn't a
+   public release.
+2. **`"yolo"` and `"finetuned"` are independent engine keys, not one key
+   with an env-var swap.** The original plan had `FINE_TUNED_YOLO_MODEL_PATH`
+   override `YOLOVisionEngine`'s weights whenever it's set, meaning the
+   `"yolo"` key would silently *become* the fine-tuned model — fine for a
+   single deployed engine, but it defeats the actual goal: letting a user
+   directly compare base vs. fine-tuned detection in the live UI. Fixed by
+   giving `get_engine()` dedicated builder functions per key
+   (`_build_yolo_engine`/`_build_finetuned_engine`, both in
+   `vision_engine.py`) that each pass `weights_path` explicitly, so neither
+   can be affected by the other's configuration.
+3. **`CameraFeedDashboard.jsx`'s engine toggle is `['yolo', 'finetuned']`,
+   not `['yolo', 'yoloe']`** — the live comparison tool is base vs.
+   fine-tuned, not YOLO vs. YOLOE (which remains available as a
+   config-only option, `VISION_MODEL_TYPE=yoloe`, just not in the app's
+   selectable UI). `vision_routes.py`'s WebSocket response reports the
+   resolved engine key (`"yolo"`/`"finetuned"`) rather than
+   `type(tracker).__name__`, since both keys build the same
+   `YOLOVisionEngine` class and the class name alone can't distinguish them.
 
 **Not needed, but worth noting**: this plan's 28 novel classes were chosen
 to overlap with `vision_engine.py`'s existing `HOME_ITEM_CLASSES` (YOLOE's
@@ -657,8 +680,8 @@ scheme — and nothing here proposes changing `HOME_ITEM_CLASSES` itself.
    with LVIS and fall back per-class if a given class's filtered count
    proves too sparse (run `prepare_dataset.py` first and check its printed
    counts before assuming any class needs this).
-2. Checkpoint hosting (Section 9) — Hugging Face Hub assumed, confirm no
-   existing team/infra preference overrides that.
+2. ~~Checkpoint hosting~~ — resolved: committed directly to the repo
+   (Section 9), not externally hosted.
 3. The golden-set class scope (Section 2/7.2) is a judgment call on which
    20 COCO classes to keep and which 28 new ones to add — reasoned through
    explicitly here (small/portable/personally-owned items plausible at

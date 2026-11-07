@@ -29,10 +29,18 @@ reflects the latest known-good state, not every attempt that got there.
   (`freeze=None`) made forgetting measurably worse on average and
   catastrophically worse on `toothbrush`/`dog` specifically — discarded.
   See the Catastrophic-forgetting check section below for the full table.
+- **Deployed.** Run 2 is now the project's baseline, not an experimental
+  variant — `finetuning/prepare_dataset.py`'s own `--coco-sample-size`
+  default and the main `01_dataset_prep_and_eda.ipynb` notebook were both
+  updated to 5000, so re-running "the" pipeline from scratch reproduces
+  this result, not the original one. Its weights are committed at
+  `backend/weights/lostfound_yolo26n_best.pt`, baked into the Docker
+  image at `/opt/weights/lostfound_yolo26n_best.pt`, and selectable in
+  the live app as the "Fine-tuned" engine option (alongside base YOLO —
+  see `docs/FINE_TUNING_YOLO_GUIDE.md` Section 9 for the wiring detail).
 - **Not yet done:** the real golden-set 3-way benchmark
   (`finetuning/evaluate.py`) — blocked on self-captured, annotated
   photos (`finetuning/README.md` Step 4), not a code or pipeline task.
-  App integration is intentionally on hold until that benchmark exists.
 
 ## Archived model weights
 

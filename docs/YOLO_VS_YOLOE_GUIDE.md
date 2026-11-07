@@ -1,9 +1,17 @@
 # YOLO vs. YOLOE — Which to Use, and How
 
-`app/engines/vision/vision_engine.py` supports two real detection engines side by
-side, selected by config, not code. This guide is the practical "which one, and
-how" reference — for the research behind *why* YOLOE exists and its real
-accuracy numbers, see `FINE_TUNING_YOLO_GUIDE.md` (Section 2).
+`app/engines/vision/vision_engine.py` supports three real detection engines,
+selected by config, not code: `yolo`, `yoloe`, and `finetuned` (this project's
+own fine-tuned checkpoint — see `FINE_TUNING_YOLO_GUIDE.md`). **The live UI's
+toggle is YOLO vs. fine-tuned specifically**, not YOLO vs. YOLOE — that
+comparison matters more for this product (same architecture, this project's
+actual 48-class vocabulary, directly comparable detections) than YOLOE's
+open-vocabulary tradeoff does. YOLOE still works, just as a config-only
+option (`VISION_MODEL_TYPE=yoloe`), not in the app's selectable toggle. This
+guide is the practical "which one, and how" reference for YOLO vs. YOLOE
+specifically — for the research behind *why* YOLOE exists and its real
+accuracy numbers, see `FINE_TUNING_YOLO_GUIDE.md` (Section 2); for the
+fine-tuned model now in the live toggle, see that same guide's Section 9.
 
 ## TL;DR
 
@@ -22,9 +30,11 @@ accept the accuracy tradeoff in exchange for zero fine-tuning/dataset work.
 
 ## Switching from the UI (no restart needed)
 
-The header has a live **YOLO / YOLOE toggle** right next to the camera status
-indicator — click either option and the camera feed reconnects with the new
-engine within a second or two. No `.env` edit, no container restart.
+The header has a live **YOLO / Fine-tuned toggle** right next to the camera
+status indicator — click either option and the camera feed reconnects with
+the new engine within a second or two. No `.env` edit, no container restart.
+(YOLOE is reachable only via `VISION_MODEL_TYPE=yoloe` at startup, not from
+this toggle — see the intro above.)
 
 Mechanically: `CameraFeedDashboard.jsx` tracks the selection and passes it to
 `useVisionWS`, which includes it as `?engine=` on the `/ws/vision` WebSocket URL and
@@ -49,7 +59,7 @@ service already wires all four vars through**:
 | Var | Applies to | Default | Purpose |
 |---|---|---|---|
 | `VISION_MODEL_TYPE` | Both | `yolo` | `yolo` or `yoloe` — which engine backs `VisionTracker` |
-| `FINE_TUNED_YOLO_MODEL_PATH` | **YOLO only** | unset | Weights file for `YOLOVisionEngine` specifically — use this, not `YOLO_MODEL_PATH`, when pointing at a fine-tuned checkpoint, since both engines can be resident at once and `YOLO_MODEL_PATH` is read by both |
+| `FINE_TUNED_YOLO_MODEL_PATH` | **`"finetuned"` key only** | unset (defaults to the baked-in `backend/weights/lostfound_yolo26n_best.pt`) | Overrides which checkpoint the `"finetuned"` engine key loads — never affects the `"yolo"` key, which is always base COCO-pretrained regardless of this var, so the two stay independently comparable |
 | `YOLO_MODEL_PATH` | Both (legacy) | `yolo26n.pt` (YOLO) / `yoloe-26n-seg.pt` (YOLOE) | Still read by both for back-compat — avoid setting this if you only want to override YOLO's weights, since YOLOE would pick up the same value |
 | `VISION_CUSTOM_CLASSES` | YOLOE only | 80 COCO classes + ~250 curated home items (~297 total) | Comma-separated class names passed to `set_classes()` — **replaces** the default entirely, doesn't add to it |
 
@@ -88,17 +98,23 @@ docker-compose up -d --build backend postgres frontend
 docker logs -f vision_assist_api   # wait for boot
 ```
 
-1. Open the frontend, allow camera access, hold up a phone/keys/wallet with
-   the toggle on **YOLO**. `keys`/`wallet` should **not** appear as bounding
-   boxes — confirms the class gap.
-2. Click **YOLOE** in the header toggle. First click after boot takes a
-   moment (constructing the engine); after that it's instant.
+**YOLOE isn't in the live UI toggle** (that's YOLO vs. fine-tuned now — see
+the intro above), so testing it this way needs `VISION_MODEL_TYPE=yoloe` set
+before boot, then connect to `/ws/vision?engine=yoloe` directly (a REST
+client, or temporarily editing `ENGINE_OPTIONS` in `CameraFeedDashboard.jsx`
+back to include `'yoloe'` for a one-off local test) rather than clicking a
+header button:
+
+1. With the engine set to `yolo`, hold up a phone/keys/wallet. `keys`/
+   `wallet` should **not** appear as bounding boxes — confirms the class gap.
+2. Switch to `yoloe` (first use after boot takes a moment — constructing the
+   engine; after that it's instant).
 3. Same objects, same framing. Expect the same everyday classes (`person`,
    `cell phone`) plus, potentially, `keys`/`wallet`/`sunglasses` — at visibly
    lower confidence scores than YOLO reported for the classes both engines
    know. That's the accuracy tradeoff from the TL;DR table, observed
    directly, not just read about.
-4. Click **YOLO** again — instant, since it's still cached from step 1.
+4. Switch back to `yolo` — instant, since it's still cached from step 1.
 
 ## Why not just always use YOLOE?
 

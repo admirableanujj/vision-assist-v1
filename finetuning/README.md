@@ -1,10 +1,13 @@
 # Fine-tuning YOLO26n: a curated 48-class home/garage lost & found model
 
 Implementation of the plan in `docs/FINE_TUNING_YOLO_GUIDE.md`. **Status:
-ready to run, not yet run** — no training job has been executed, no
-checkpoint produced. This directory has the scripts; running them still
-takes a Kaggle session, real GPU time, and (for the golden set) real
-photography/annotation.
+done and deployed.** Three training variants were run on Kaggle and
+compared (`finetuning/kaggle/RUN_LOG.md` has the full record, including
+real GPU hours spent); the winner is baked into the app as
+`backend/weights/lostfound_yolo26n_best.pt` and selectable in the live
+UI as the "Fine-tuned" detection engine, alongside base YOLO for direct
+comparison. Still pending: `evaluate.py`'s real three-way golden-set
+benchmark, which needs real photography/annotation first (Step 4 below).
 
 **Not the original 80-COCO-classes-plus-3 scheme.** This fine-tune keeps
 only 20 of COCO's 80 classes (small, portable, personally-owned items
@@ -42,10 +45,10 @@ rationale on what was dropped and why.
   - **Dropped**: the other 60 COCO classes — wild animals, street/outdoor infrastructure, vehicles, food, and fixed furniture/appliances. None of these are ever really "lost," and training capacity on them was capacity not spent on this product's actual job.
 - **Datasets consumed**:
   - **LVIS** (Facebook AI Research, ~160K images, built on COCO's image set) — only images containing at least one of the 28 novel classes; every other LVIS class (of 1,203) is dropped from those images' labels, not merged in.
-  - **COCO `train2017`** — a capped random sample (default 750 images, configurable via `--coco-sample-size`) of images containing at least one of the 20 *kept* classes, remapped to 0–19 — the catastrophic-forgetting mitigation (Guide Section 6), now scoped to only the classes actually kept, not all 80.
+  - **COCO `train2017`** — a capped random sample (default **5000** images, configurable via `--coco-sample-size` — raised from an original guess of 750 once the hyperparameter sweep measured that the smaller default starved the rarest kept classes, `scissors`/`toothbrush`, of training images) of images containing at least one of the 20 *kept* classes, remapped to 0–19 — the catastrophic-forgetting mitigation (Guide Section 6), now scoped to only the classes actually kept, not all 80.
   - An image matching both sources (LVIS reuses COCO's own JPEGs — a "person holding keys" photo is realistic) gets both sets of labels **merged** into one file, not one source overwriting the other.
   - Fallback if a given novel class's LVIS-filtered count is too sparse: Roboflow Universe, searched live per-class (Guide Section 3.2 — no dataset names are hardcoded here, since they go stale).
-- **Not touched**: YOLOE (`yoloe-26n-seg.pt`) — this fine-tune only produces a new YOLO checkpoint; the live UI toggle's YOLOE path is unaffected. The 28 novel classes were chosen to overlap with YOLOE's existing `HOME_ITEM_CLASSES` vocabulary where practical, but the two stay independent.
+- **Not touched**: YOLOE (`yoloe-26n-seg.pt`) — this fine-tune only produces a new YOLO checkpoint; YOLOE is unaffected and still exists as a config-only engine option (`VISION_MODEL_TYPE=yoloe`), just no longer in the live UI's selectable toggle, which is now base YOLO vs. this fine-tuned model specifically (see Guide Section 9). The 28 novel classes were chosen to overlap with YOLOE's existing `HOME_ITEM_CLASSES` vocabulary where practical, but the two stay independent.
 
 ## How to run it
 
