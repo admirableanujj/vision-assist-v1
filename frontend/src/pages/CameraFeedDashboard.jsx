@@ -7,7 +7,7 @@ import { useVisionWS } from '../hooks/useVisionWS';
 // clear, direct comparison of base vs. fine-tuned detection on this
 // project's 48-class lostfound scheme, not a third open-vocabulary mode.
 const ENGINE_OPTIONS = ['yolo', 'finetuned'];
-const ENGINE_LABELS = { yolo: 'YOLO', finetuned: 'Fine-tuned' };
+const ENGINE_LABELS = { yolo: 'YOLO', finetuned: 'Fine-tuned YOLO' };
 const ENGINE_TOOLTIPS = {
   yolo: 'Base model, fixed 80 COCO classes',
   finetuned: 'Fine-tuned on this project\'s 48-class lostfound scheme (20 kept COCO classes + 28 new, e.g. keys/wallet/screwdriver)',
