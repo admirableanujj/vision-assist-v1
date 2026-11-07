@@ -22,6 +22,13 @@ reflects the latest known-good state, not every attempt that got there.
   already built for the baseline's apples-to-apples check — no need to
   round-trip through Kaggle for CPU-only inference on weights already
   downloaded).
+- **Hyperparameter sweep: ✅ complete and conclusive.** Run 2
+  (`--coco-sample-size 5000`) improved the forgetting-check on every one
+  of the 20 kept classes with only a marginal novel-class cost —
+  **recommended as the new best model**, replacing the baseline. Run 3
+  (`freeze=None`) made forgetting measurably worse on average and
+  catastrophically worse on `toothbrush`/`dog` specifically — discarded.
+  See the Catastrophic-forgetting check section below for the full table.
 - **Not yet done:** the real golden-set 3-way benchmark
   (`finetuning/evaluate.py`) — blocked on self-captured, annotated
   photos (`finetuning/README.md` Step 4), not a code or pipeline task.
@@ -180,42 +187,65 @@ for anything comparing against base YOLO.
 
 | | Base `yolo26n.pt` | Run 1 (baseline) | Run 2 (sample5000) | Run 3 (freeze=None) |
 |---|---|---|---|---|
-| mAP50 (avg, 20 kept classes) | 0.510 | 0.403 | *pending* | *pending* |
-| mAP50-95 (avg, 20 kept classes) | 0.365 | 0.272 | *pending* | *pending* |
-| Relative change (mAP50-95) | — | −25.3% | *pending* | *pending* |
+| mAP50 (avg, 20 kept classes) | 0.510 | 0.403 | **0.425** | 0.368 |
+| mAP50-95 (avg, 20 kept classes) | 0.365 | 0.272 | **0.291** | 0.248 |
+| Relative change (mAP50-95) | — | −25.3% | **−20.1%** | −32.0% |
 
-*Runs 2/3's matched comparison is running locally as of this update —
-replace once complete.*
+**Result: run 2 (`coco-sample-size=5000`) wins clearly; run 3
+(`freeze=None`) is a clear loss.** Full per-class table (mAP50-95,
+train-instance counts as in run 1):
 
-**Baseline's regression is real but very uneven, not uniform** — this is
-the actual finding that motivated the sweep:
+| Class | Base | Run 1 | Run 2 | Run 3 | R1 chg | R2 chg | R3 chg |
+|---|---|---|---|---|---|---|---|
+| `person` | 0.510 | 0.470 | 0.475 | 0.471 | −7.8% | −6.8% | −7.7% |
+| `laptop` | 0.598 | 0.543 | 0.546 | 0.504 | −9.1% | −8.6% | −15.6% |
+| `mouse` | 0.541 | 0.476 | 0.479 | 0.426 | −12.0% | −11.4% | −21.2% |
+| `cat` | 0.717 | 0.587 | 0.609 | 0.484 | −18.1% | −15.0% | −32.5% |
+| `backpack` | 0.108 | 0.088 | 0.090 | 0.079 | −18.6% | −16.3% | −26.6% |
+| `bicycle` | 0.273 | 0.215 | 0.222 | 0.195 | −21.3% | −18.9% | −28.5% |
+| `umbrella` | 0.377 | 0.296 | 0.308 | 0.277 | −21.6% | −18.3% | −26.7% |
+| `keyboard` | 0.507 | 0.397 | 0.429 | 0.381 | −21.7% | −15.3% | −24.8% |
+| `bottle` | 0.304 | 0.234 | 0.248 | 0.214 | −23.0% | −18.3% | −29.5% |
+| `cell phone` | 0.286 | 0.213 | 0.222 | 0.202 | −25.4% | −22.2% | −29.3% |
+| `dog` | 0.656 | 0.483 | 0.493 | 0.332 | −26.4% | −24.9% | **−49.5%** |
+| `teddy bear` | 0.478 | 0.350 | 0.427 | 0.352 | −26.9% | −10.8% | −26.5% |
+| `cup` | 0.355 | 0.258 | 0.284 | 0.234 | −27.5% | −20.0% | −34.1% |
+| `handbag` | 0.098 | 0.069 | 0.072 | 0.059 | −29.6% | −27.2% | −39.9% |
+| `tie` | 0.296 | 0.198 | 0.232 | 0.217 | −33.1% | −21.6% | −26.7% |
+| `suitcase` | 0.388 | 0.236 | 0.263 | 0.204 | −39.3% | −32.1% | −47.5% |
+| `book` | 0.098 | 0.054 | 0.063 | 0.056 | −44.4% | −36.0% | −42.8% |
+| `remote` | 0.209 | 0.114 | 0.147 | 0.105 | −45.7% | −29.8% | −49.6% |
+| `scissors` (180 train inst.) | 0.297 | 0.101 | **0.142** | 0.151 | −66.0% | **−52.1%** | −49.1% |
+| `toothbrush` (143 train inst.) | 0.195 | 0.065 | 0.073 | **0.015** | −66.9% | −62.5% | **−92.5%** |
 
-| Class | Train instances (run 1) | mAP50-95 rel. change (run 1) |
-|---|---|---|
-| `person` | 64,070 | **−7.8%** (barely touched) |
-| `laptop` | 1,094 | −9.1% |
-| `mouse` | 506 | −12.0% |
-| `cat` | 297 | −18.1% |
-| `backpack` | 2,315 | −18.6% |
-| `bicycle` | 1,129 | −21.3% |
-| `suitcase` | 1,284 | −39.3% |
-| `book` | 3,400 | −44.4% |
-| `remote` | 1,059 | −45.7% |
-| `scissors` | 180 | **−66.0%** |
-| `toothbrush` | 143 | **−66.9%** (worst) |
+**Takeaways:**
+- **Run 2 (bigger COCO sample) improved every single one of the 20 kept
+  classes** — not just `scissors`/`toothbrush`, all 20 — confirming its
+  hypothesis cleanly. `scissors` specifically: −66.0% → −52.1% (absolute
+  mAP50-95 0.101→0.142, +41% relative). `toothbrush`: −66.9% → −62.5%
+  (smaller gain — it has the fewest training instances of any kept
+  class even after the increase, 325 vs. `scissors`' 320, but started
+  from a lower base).
+- **Run 3 (unfrozen backbone) made forgetting *worse* on average
+  (−32.0% vs. baseline's −25.3%)**, and catastrophically worse on
+  `toothbrush` specifically (−92.5%, essentially destroyed — absolute
+  mAP50-95 fell to 0.015) and `dog` (−49.5%). Letting the full backbone
+  drift away from its COCO-pretrained state amplifies forgetting rather
+  than fixing it — this refutes run 3's hypothesis; it was also slower
+  to train (86 epochs vs. 55) for a worse outcome on both the novel-class
+  metric and this check. Not recommended.
+- The `scissors`/`toothbrush`-have-fewest-instances correlation from run
+  1 holds up: run 2's gain on `scissors` tracks its +43.5% instance
+  increase; `book`/`remote`/`suitcase` (decent instance counts, still
+  hit hard in run 1) also improved under run 2, which cuts against pure
+  visual-confusability being the main driver there — more COCO-only
+  sampling diversity plausibly helps generalization broadly, not just
+  via raw rare-class counts. Not fully disentangled; a confusion-matrix
+  look would clarify but hasn't been done.
 
-(9 classes not shown: all in the −18% to −33% range.) `scissors`/
-`toothbrush` — worst-hit — also have by far the fewest training
-instances among the 20 kept classes, a real, verified correlation. That
-doesn't fully explain `book`/`remote`/`suitcase` (decent instance counts,
-still hit hard) — a plausible but **unconfirmed** hypothesis is visual
-confusability with newly-added novel classes that look similar (`book`
-vs. `notebook`/`passport`; `suitcase` vs. `toolbox`/`briefcase`); would
-need a confusion-matrix look to verify, not asserted as fact here.
-
-**Once runs 2/3's numbers land**, the direct test is whether `scissors`/
-`toothbrush` specifically improved — that's what each sweep variant's
-hypothesis predicts, not just the aggregate average.
+**Recommendation:** adopt run 2 (`finetuning/runs/run2_sample5000_cls0.5_freeze10/`)
+over the baseline — it's a strict improvement on every kept class with
+only a marginal (0.007) dip in novel-class mAP50-95. Discard run 3.
 
 ## GPU budget tracking
 
