@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
-export function useAudioWS() {
+export function useAudioWS(authToken) {
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [aiResponse, setAiResponse] = useState('');
@@ -10,10 +10,18 @@ export function useAudioWS() {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
 
-  // Automatically establish WebSocket connection on mount
+  // Re-run connection whenever authToken changes or becomes available
   useEffect(() => {
+    const token = authToken || localStorage.getItem('vision_assist_token');
+  
+    // STRICT GUARD: Do not attempt connection if token is missing or invalid
+    if (!token || token === 'null' || token === 'undefined' || token.trim() === '') {
+      console.log("Audio WS: Skipping connection attempt (Waiting for valid auth token).");
+      return;
+    } 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/audio`;
+    const wsUrl = `${protocol}//${window.location.host}/ws/audio?token=${encodeURIComponent(token)}`;
+
     
     console.log("Connecting Audio WebSocket to:", wsUrl);
     const ws = new WebSocket(wsUrl);
@@ -24,8 +32,8 @@ export function useAudioWS() {
       setWsConnected(true);
     };
 
-    ws.onclose = () => {
-      console.log("Audio WebSocket closed");
+    ws.onclose = (event) => {
+      console.log("Audio WebSocket closed", event.code, event.reason);
       setWsConnected(false);
     };
 
@@ -46,11 +54,11 @@ export function useAudioWS() {
     };
 
     return () => {
-      if (ws.readyState === WebSocket.OPEN) {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         ws.close();
       }
     };
-  }, []);
+  }, [authToken]); //Triggers reconnection as soon as token is set after login
 
   // Start Recording Audio (Push-to-Talk Press)
   const startRecording = async () => {

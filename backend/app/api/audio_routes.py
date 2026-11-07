@@ -2,10 +2,17 @@ import os
 import tempfile
 import logging
 import ollama
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+import io
+from typing import Optional
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, Query, status
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from gtts import gTTS
 from openai import OpenAI
-from faster_whisper import WhisperModel
+
 from app.engines.ml.query_classifier import QueryClassifier
+from app.core.security import get_current_user
 
 logger = logging.getLogger("audio_routes")
 router = APIRouter(tags=["Audio & Voice Reasoning"])
@@ -69,9 +76,29 @@ async def transcribe_audio_file(file_path: str) -> str:
 
 @router.websocket("/ws/audio")
 async def audio_websocket(websocket: WebSocket):
+    #Extract token directly from query parameters for WebSocket authentication
+    token = websocket.query_params.get("token")    
+    
+    
+    # Authenticate token manually during WebSocket handshake
+    if not token or token == "null" or token == "undefined":
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        logger.warning("Audio WebSocket connection rejected: Missing authentication token.")
+        return    
+        
+    # try:
+    #         # Optional: Perform full token decoding/verification here if desired
+    #         from app.core.security import decode_access_token # or your custom verification
+    #         # payload = decode_access_token(token)
+    #         # if not payload:
+    #         #     raise Exception("Invalid token payload")
+    #     except Exception as e:
+    #         logger.warning(f"Audio WebSocket authentication failed: {e}")
+    #         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+    #         return        
     await websocket.accept()
     logger.info(f"Client connected to Audio WebSocket stream (Provider: {STT_PROVIDER}).")
-
+    
     try:
         while True:
             audio_bytes = await websocket.receive_bytes()
@@ -139,3 +166,28 @@ async def audio_websocket(websocket: WebSocket):
             await websocket.close()
         except:
             pass
+        
+class TTSRequest(BaseModel):
+    text: str
+
+@router.post("/tts")
+async def generate_tts(request: TTSRequest, current_user: dict = Depends(get_current_user)):
+    """
+    Generates a TTS audio stream from the provided text using gTTS.
+    Returns an audio/mpeg streaming response directly to the client browser.
+    """
+    if not request.text.strip():
+        raise HTTPException(status_code=400, detail="Text for TTS generation is required.")
+
+    try:
+        tts = gTTS(text=request.text, lang='en', tld='com', slow=False)
+        audio_io = io.BytesIO()
+        tts.write_to_fp(audio_io)
+        audio_io.seek(0)
+        
+        username = current_user.get('username', 'operator')
+        logger.info(f"TTS audio stream successfully generated for user '{username}'.")
+        return StreamingResponse(audio_io, media_type="audio/mpeg")
+    except Exception as e:
+        logger.exception(f"TTS generation failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate TTS audio.")

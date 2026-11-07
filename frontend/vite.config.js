@@ -8,8 +8,8 @@ export default defineConfig({
     host: true,
     port: 3000,
     proxy: {
-      '/api': {
-        target: 'http://backend:8000',
+      '/tts': {
+        target: 'http://backend:8000', // Use 'http://localhost:8000' if running outside Docker
         changeOrigin: true,
       },
       '/ws': {
@@ -17,6 +17,10 @@ export default defineConfig({
         ws: true, // Enable WebSocket proxying
         changeOrigin: true,
       },
-    },
-  },
+      '/api': {
+        target: 'http://backend:8000',
+        changeOrigin: true,
+      }
+    }
+  }
 });
