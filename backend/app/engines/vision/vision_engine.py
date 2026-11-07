@@ -1,9 +1,11 @@
 # app/engines/vision/vision_engine.py
 """
-YOLO / YOLOE object detection engine.
+YOLO object detection engine, three variants: base ("yolo"), this
+project's own fine-tuned checkpoint ("finetuned"), and the open-vocabulary
+YOLOE ("yoloe", config-only — see get_engine()/_ENGINE_BUILDERS below).
 
 Usage:
-    from app.engines.vision import VisionTracker
+    from app.engines.vision import VisionTracker, get_engine
 """
 __license__ = "MIT"
 __version__ = "1.0.1"

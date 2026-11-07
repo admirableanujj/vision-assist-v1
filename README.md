@@ -19,7 +19,7 @@ frontend, communicating over REST + WebSockets.
        │                   │                      │
        ▼                   ▼                      ▼
  +-----------+     +---------------+      +---------------------+
- | PostgreSQL|     |  YOLO / YOLOE |      | Whisper STT + Ollama |
+ | PostgreSQL|     |YOLO/Fine-tuned|      | Whisper STT + Ollama |
  | (Users/Log)     | (Vision Engine)      | (Audio + Intent)     |
  +-----------+     +---------------+      +---------------------+
 ```
