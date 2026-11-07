@@ -142,39 +142,73 @@ split): mAP50=0.254, mAP50-95=0.171 — identical to notebook 2's own final
 validation (same model, same split, just re-confirmed). Per-class numbers
 for the 28 novel classes match training's own breakdown exactly.
 
-**Catastrophic-forgetting check, with a real baseline this time:**
+**Catastrophic-forgetting check — true apples-to-apples, matched sample.**
 
-| | mAP50 | mAP50-95 | Images | Source |
-|---|---|---|---|---|
-| Fine-tuned (20 kept classes, remapped) | 0.416 | 0.237 | 75 (sampled) | notebook 3, COCO val2017-derived |
-| **Base `yolo26n.pt`** (same 20 classes, original COCO ids) | **0.510** | **0.365** | 4,952 (full val2017) | local run, see below |
-| Relative change | −18.4% | **−35.1%** | | |
-
-The base-model number wasn't in the notebook — the forgetting-check yaml
+Notebook 3's own forgetting-check yaml only used a 75-image sample and
 remaps ground truth to this project's compressed 0-19 scheme, which
 doesn't line up with base YOLO's standard 80-class output past index 1
-(`person`/`bicycle` coincide, everything else diverges), so base YOLO
-can't be scored against that yaml directly. Ran base `yolo26n.pt` locally
-instead against the full standard COCO val2017 (downloaded directly —
+(`person`/`bicycle` coincide, everything else diverges) — so base YOLO
+can't be scored against that yaml directly, and 75 images isn't the
+full picture either way. Built a proper matched comparison instead, same
+exact 5,000 COCO val2017 images for both models (downloaded directly —
 `images.cocodataset.org/zips/val2017.zip` + the Ultralytics labels zip,
 ~1GB total, not the full 20GB train+val bundle `coco.yaml`'s own download
-block would otherwise pull), then averaged the 20 kept classes' AP from
-that 80-class result.
+block would otherwise pull): base `yolo26n.pt` scored with original
+80-class ids, fine-tuned `best.pt` scored with the same 4,952 label files
+remapped to the 20 kept classes (reusing `prepare_dataset.py`'s own
+`COCO_OLD_TO_NEW` mapping — remapped-image count, 3,471, matches notebook
+1's own forgetting-check count exactly, confirming the remap is correct).
 
-**Reading this: a real, non-trivial regression, not a collapse.** A
-~35% relative drop in mAP50-95 on the kept classes is the expected cost
-of narrowing `nc` 80→48 with `freeze=10` (per the guide's own framing of
-what counts as acceptable vs. a collapse) — nothing here is near-zero.
-**Caveat:** the two sides aren't a perfectly matched sample (75
-pre-filtered images vs. the full 4,952-image val2017), so treat the
-exact percentage as directional, not a precise number — the real,
-matched three-way comparison is the golden-set benchmark, not this.
+| | Base `yolo26n.pt` | Fine-tuned `best.pt` | Relative change |
+|---|---|---|---|
+| mAP50 (avg over 20 kept classes) | 0.510 | 0.403 | **−20.9%** |
+| mAP50-95 (avg over 20 kept classes) | 0.365 | 0.272 | **−25.3%** |
 
-**Open question to resolve before golden-set work:** is ~35% an
-acceptable tradeoff for gaining 28 new classes, or does it justify
-revisiting `freeze=10` → `freeze=None` (train more of the backbone) or
-raising `--coco-sample-size` beyond 750 in a re-run? Worth deciding
-before spending time on golden-set photography, not after.
+Both scored on the identical 5,000 images, same `imgsz=640`. (An earlier,
+mismatched-sample estimate on this same data put the mAP50-95 drop at
+~35% — that was comparing a 75-image pre-filtered subset against the
+full 4,952; the matched number above supersedes it.)
+
+**The average hides a wide spread — this is the real finding:**
+
+| Class | Train instances | mAP50-95 rel. change |
+|---|---|---|
+| `person` | 64,070 | **−7.8%** (barely touched) |
+| `laptop` | 1,094 | −9.1% |
+| `mouse` | 506 | −12.0% |
+| `cat` | 297 | −18.1% |
+| `backpack` | 2,315 | −18.6% |
+| `bicycle` | 1,129 | −21.3% |
+| `suitcase` | 1,284 | −39.3% |
+| `book` | 3,400 | −44.4% |
+| `remote` | 1,059 | −45.7% |
+| `scissors` | 180 | **−66.0%** |
+| `toothbrush` | 143 | **−66.9%** (worst) |
+
+Full 20-class table (including the 9 classes not shown above — all in
+the −18% to −33% range) is in this session's working data, not
+duplicated here.
+
+**Reading this:** a real, non-trivial regression, not a collapse —
+nothing is near-zero — but the forgetting is very uneven, not uniform.
+`scissors`/`toothbrush` (worst-hit) also have by far the fewest training
+instances among the 20 kept classes (180/143, vs. `person`'s 64,070),
+a real correlation — fewer examples of a kept class surviving the merge
+means less to anchor it against forgetting. That doesn't fully explain
+it though: `book` (3,400 instances, not sparse) still dropped 44%, and
+`remote`/`suitcase` similarly — plausibly visual confusability with
+newly-added novel classes that look similar (`book` vs. the new
+`notebook`/`passport`; `suitcase` vs. the new `toolbox`/`briefcase`),
+but that's a hypothesis, not confirmed — would need a confusion-matrix
+look to verify, not asserted here as fact.
+
+**Open question to resolve before golden-set work:** is this acceptable
+for gaining 28 new classes, given some kept classes (`scissors`,
+`toothbrush`, `book`, `remote`, `suitcase`) lost a lot? Options: accept
+it and note the limitation, raise `--coco-sample-size` beyond 750
+specifically to give these classes more training weight, or revisit
+`freeze=10` → `freeze=None`. Worth deciding before golden-set
+photography, not after.
 
 ## GPU budget tracking
 
