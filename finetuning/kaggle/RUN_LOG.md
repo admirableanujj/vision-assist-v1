@@ -10,16 +10,17 @@ reflects the latest known-good state, not every attempt that got there.
 
 ## Status (as of 2026-11-06)
 
-- **Notebook 1** (`01_dataset_prep_and_eda.ipynb`): re-running as kernel
-  version 14, regenerating output now that the scripts dataset is actually
-  fixed (see Finding 1 below). EDA numbers below are from version 13 —
-  real, but produced on stale pre-fix scripts (slow due to Finding 1's
-  O(n²) bug, though the data itself was correct) — will be replaced once
-  v14 completes.
-- **Notebook 2** (`02_train.ipynb`): first attempt (kernel version 2)
-  failed before any epoch ran (~1 min GPU time) on the stale-scripts bug
-  below. Waiting on notebook 1 v14, then retrying.
-- **Notebook 3** (`03_evaluate_finetune_checks.ipynb`): not yet run.
+- **Notebook 1** (`01_dataset_prep_and_eda.ipynb`): ✅ complete, kernel
+  version 14 — regenerated with the real fix (Finding 1) actually deployed.
+  Scan steps that took 34.5min/157min on stale scripts now complete in
+  seconds; data itself unchanged (confirms it was always correct, only
+  speed was broken).
+- **Notebook 2** (`02_train.ipynb`): ✅ complete, kernel version 3 —
+  trained successfully after the scripts-dataset fix. Early-stopped at
+  epoch 55 (best: epoch 40). See Training results below.
+- **Notebook 3** (`03_evaluate_finetune_checks.ipynb`): running (kernel
+  version 3, CPU-only, no GPU quota spent — `enable_gpu: false` confirmed
+  directly in its `kernel-metadata.json`).
 
 ## Dataset & kernel locations
 
@@ -71,8 +72,9 @@ reflects the latest known-good state, not every attempt that got there.
 
 ## EDA results — notebook 1 output (`lostfound/`)
 
-*From kernel version 13 — correct data, produced on stale pre-fix scripts
-(slow, Finding 1). Will be replaced by v14's numbers.*
+*Confirmed identical on kernel version 14 (real fix deployed) as on v13
+(stale scripts) — the underlying data was always correct; only the scan
+speed was affected by Finding 1's bug.*
 
 | Metric | Value |
 |---|---|
@@ -86,18 +88,56 @@ reflects the latest known-good state, not every attempt that got there.
 Full per-class breakdown lives in `eda_report/class_distribution.csv` on
 Kaggle, not duplicated here.
 
-## Training results — notebook 2
+## Training results — notebook 2 (kernel version 3, 2026-11-06)
 
-Pending. First attempt failed before any epoch (stale-scripts `path:` bug,
-now fixed — see Finding 1). No train/val loss or timing yet.
+**Early-stopped at epoch 55** (`patience=15`, no improvement after epoch
+40) — **4.939 hours** on a single T4. `cls_pw=0.5` confirmed active
+throughout (verified in the saved checkpoint's own `train_args`).
+
+Overall (`best.pt`, on `lostfound/`'s own val split — 3,749 images, 34,773
+instances):
+
+| Metric | Value |
+|---|---|
+| Precision | 0.379 |
+| Recall | 0.265 |
+| mAP50 | 0.254 |
+| mAP50-95 | 0.171 |
+
+**Well-learned classes** (common, high instance count): `person` (mAP50
+0.754), `cat` (0.719), `laptop` (0.708), `teddy bear` (0.627).
+
+**The 5 EDA-flagged sparse classes — mixed, mostly as predicted:**
+
+| Class | Instances | mAP50 | mAP50-95 |
+|---|---|---|---|
+| `passport` | 3 | 0.574 | 0.527 |
+| `game controller` | 3 | 0.335 | 0.335 |
+| `hammer` | 13 | 0.091 | 0.044 |
+| `tape measure` | 17 | 0.011 | 0.005 |
+| `toolbox` | 6 | 0.001 | 0.0001 |
+
+`passport`/`game controller` did surprisingly well despite tiny counts
+(likely simple, visually distinct appearance) — `hammer`/`tape measure`/
+`toolbox` effectively didn't learn. **Other weak classes not caught by
+the 50-instance floor:** `battery` (32 inst., mAP50 0.002), `pliers` (18,
+0.040), `screwdriver` (18, 0.060), `wrench` (15, 0.066), `stapler` (15,
+0.090), `briefcase` (16, 0.034) — worth tightening the floor or adding a
+Roboflow fallback (Section 3.2) for these alongside the originally
+flagged 5 before relying on this model for those classes specifically.
+
+Full 48-class breakdown + training curves: `runs/lostfound_yolo26n/` in
+notebook 2's committed Output (`results.csv`, `results.png`,
+`weights/{best,last}.pt`, both 5.4MB).
 
 ## Eval results — notebook 3
 
-Not yet run.
+Running (kernel version 3) — this is the forgetting-check + novel-class
+sanity gate, not the real golden-set benchmark (`finetuning/evaluate.py`,
+separate, needs self-captured photos). Results pending.
 
 ## GPU budget tracking
 
-Kaggle free tier: ~30 GPU-hr/week (T4/P100). Spent so far: ~1 minute
-(notebook 2's failed first attempt — caught before any epoch). Expected
-training cost once it actually runs: 1-3hr for 50-100 epochs on a nano
-model (`docs/FINE_TUNING_YOLO_GUIDE.md` Section 8).
+Kaggle free tier: ~30 GPU-hr/week (T4/P100). Spent: ~4.94hr (notebook 2's
+successful training run) + ~1 min (its failed first attempt). Notebook 3
+costs zero GPU time (`enable_gpu: false`, CPU inference only).
