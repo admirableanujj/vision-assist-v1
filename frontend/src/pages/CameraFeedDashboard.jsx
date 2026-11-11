@@ -3,7 +3,15 @@ import { Camera, Video, VideoOff, Layers, LogOut, Cpu, HardDrive, LayoutGrid, Bo
 import { useVisionWS } from '../hooks/useVisionWS';
 // import { useAudioWS } from '../hooks/useAudioWS';
 
-const ENGINE_OPTIONS = ['yolo', 'yoloe'];
+// Deliberately just these two (not a third YOLOE option) — the goal is a
+// clear, direct comparison of base vs. fine-tuned detection on this
+// project's 48-class lostfound scheme, not a third open-vocabulary mode.
+const ENGINE_OPTIONS = ['yolo', 'finetuned'];
+const ENGINE_LABELS = { yolo: 'YOLO', finetuned: 'Fine-tuned YOLO' };
+const ENGINE_TOOLTIPS = {
+  yolo: 'Base model, fixed 80 COCO classes',
+  finetuned: 'Fine-tuned on this project\'s 48-class lostfound scheme (20 kept COCO classes + 28 new, e.g. keys/wallet/screwdriver)',
+};
 
 export default function CameraFeedDashboard({ user, onLogout, onToggleDashboard }) {
   const [selectedZone, setSelectedZone] = useState('zone-1');
@@ -60,14 +68,14 @@ export default function CameraFeedDashboard({ user, onLogout, onToggleDashboard 
                   <button
                     key={opt}
                     onClick={() => setEngineChoice(opt)}
-                    title={opt === 'yoloe' ? 'Open-vocabulary, broader classes, lower accuracy' : 'Fixed 80 COCO classes, most accurate'}
+                    title={ENGINE_TOOLTIPS[opt]}
                     className={`px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide transition cursor-pointer ${
                       engineChoice === opt
                         ? 'bg-emerald-600 text-white'
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    {opt}
+                    {ENGINE_LABELS[opt]}
                   </button>
                 ))}
               </div>

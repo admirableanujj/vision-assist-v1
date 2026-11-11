@@ -1,9 +1,11 @@
 # app/engines/vision/vision_engine.py
 """
-YOLO / YOLOE object detection engine.
+YOLO object detection engine, three variants: base ("yolo"), this
+project's own fine-tuned checkpoint ("finetuned"), and the open-vocabulary
+YOLOE ("yoloe", config-only — see get_engine()/_ENGINE_BUILDERS below).
 
 Usage:
-    from app.engines.vision import VisionTracker
+    from app.engines.vision import VisionTracker, get_engine
 """
 __license__ = "MIT"
 __version__ = "1.0.1"
@@ -26,6 +28,15 @@ DEFAULT_LOCAL_WEIGHTS = "/opt/weights/yolo26n.pt"
 
 # Open-vocabulary variant — see YOLO_VS_YOLOE_GUIDE.md for when to use it.
 DEFAULT_YOLOE_WEIGHTS = "/opt/weights/yoloe-26n-seg.pt"
+
+# Fine-tuned checkpoint: project's own 48-class lostfound scheme (20 kept
+# COCO classes remapped 0-19 + 28 novel LVIS-backed classes 20-47) - "run 2"
+# from the sweep in finetuning/kaggle/RUN_LOG.md (coco-sample-size=5000,
+# chosen over the baseline because it improved the forgetting check on
+# every one of the 20 kept classes). Baked into the image from this repo's
+# own backend/weights/ (see Dockerfile) - not a public Ultralytics release,
+# so it can't be auto-downloaded like yolo26n.pt/yoloe-26n-seg.pt above.
+DEFAULT_FINETUNED_WEIGHTS = "/opt/weights/lostfound_yolo26n_best.pt"
 
 # Standard 80-class MS-COCO label set. Passed to YOLOE's set_classes() so it
 # detects at least as much as YOLOVisionEngine does — an open-vocabulary model
@@ -274,27 +285,65 @@ try:
                     f"YOLOEVisionEngine will use simulated detections until this is fixed.")
                 self.model = None
 
-    _ENGINE_TYPES = {"yolo": YOLOVisionEngine, "yoloe": YOLOEVisionEngine}
+    _CLASS_BY_TYPE = {"yolo": YOLOVisionEngine, "yoloe": YOLOEVisionEngine}
     _selected_type = os.getenv("VISION_MODEL_TYPE", DEFAULT_VISION_MODEL_TYPE).strip().lower()
-    VisionTracker = _ENGINE_TYPES.get(_selected_type, YOLOVisionEngine)
+    VisionTracker = _CLASS_BY_TYPE.get(_selected_type, YOLOVisionEngine)
+
+    # Builder functions, not bare classes, for "yolo" and "finetuned" -
+    # YOLOVisionEngine.__init__'s own FINE_TUNED_YOLO_MODEL_PATH-takes-
+    # priority-over-YOLO_MODEL_PATH resolution (above) is designed for a
+    # single always-resident engine, where "set this env var and the one
+    # YOLO engine becomes the fine-tuned model." That's the wrong behavior
+    # once both are meant to be independently selectable side by side (the
+    # whole point of comparing base vs. fine-tuned in the app's engine
+    # toggle): it would make "yolo" silently BECOME the fine-tuned model the
+    # moment FINE_TUNED_YOLO_MODEL_PATH is set, leaving nothing to compare
+    # it against. These builders pin each key to its own weights explicitly,
+    # so "yolo" always means base COCO-pretrained and "finetuned" always
+    # means the lostfound checkpoint, regardless of what else is configured.
+    def _build_yolo_engine():
+        return YOLOVisionEngine(weights_path=os.getenv("YOLO_MODEL_PATH") or DEFAULT_LOCAL_WEIGHTS)
+
+    def _build_finetuned_engine():
+        return YOLOVisionEngine(weights_path=os.getenv("FINE_TUNED_YOLO_MODEL_PATH") or DEFAULT_FINETUNED_WEIGHTS)
+
+    def _build_yoloe_engine():
+        return YOLOEVisionEngine()
+
+    _ENGINE_BUILDERS = {
+        "yolo": _build_yolo_engine,
+        "finetuned": _build_finetuned_engine,
+        "yoloe": _build_yoloe_engine,
+    }
 
     # Per-engine instance cache so callers (e.g. a per-connection engine
-    # choice over /ws/vision) can hold both YOLO and YOLOE resident at once
-    # and switch between them without a restart. Lazy: each engine is only
+    # choice over /ws/vision) can hold multiple engines resident at once and
+    # switch between them without a restart. Lazy: each engine is only
     # constructed (and pays its load cost) the first time it's actually
-    # requested, not eagerly for both at import time.
+    # requested, not eagerly for all of them at import time.
     _engine_cache: dict = {}
 
+    def resolve_engine_key(engine_type: str = None) -> str:
+        """The same default-resolution get_engine() applies, exposed so a
+        caller (vision_routes.py) can report which engine actually served a
+        request by its real key ("yolo"/"finetuned") rather than the Python
+        class name — both keys build a YOLOVisionEngine, so type(tracker)
+        alone can't tell them apart."""
+        return (engine_type or _selected_type or DEFAULT_VISION_MODEL_TYPE).strip().lower()
+
     def get_engine(engine_type: str = None):
-        key = (engine_type or _selected_type or DEFAULT_VISION_MODEL_TYPE).strip().lower()
+        key = resolve_engine_key(engine_type)
         if key not in _engine_cache:
-            cls = _ENGINE_TYPES.get(key, YOLOVisionEngine)
-            _engine_cache[key] = cls()
+            builder = _ENGINE_BUILDERS.get(key, _build_yolo_engine)
+            _engine_cache[key] = builder()
         return _engine_cache[key]
 
 except ImportError as e:
     logger.critical(f"Vision dependencies unavailable: {e}")
     VisionTracker = FallbackVisionEngine
+
+    def resolve_engine_key(engine_type: str = None) -> str:
+        return "fallback"
 
     def get_engine(engine_type: str = None):
         return FallbackVisionEngine()
