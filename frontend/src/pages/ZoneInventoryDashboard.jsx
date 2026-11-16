@@ -1,23 +1,105 @@
 // frontend/src/pages/ZoneInventoryDashboard.jsx
-import React, { useState, useEffect } from 'react';
-import { Camera, Sparkles, Flame, Layers, LogOut, Cpu, HardDrive, Video, Mic, MicOff, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Camera, Sparkles, Flame, Layers, LogOut, Cpu, HardDrive, Video, Mic, MicOff, RefreshCw, Volume2 } from 'lucide-react';
 import { useAudioWS } from '../hooks/useAudioWS';
 
 export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraFeed }) {
   const [zones, setZones] = useState([]);
   const [selectedZone, setSelectedZone] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [genieOutput, setGenieOutput] = useState('Awaiting your command...');
   
+  // Chat History State
+  const [chatMessages, setChatMessages] = useState([
+    { sender: 'system', message: 'Welcome to Vision Assist Genie! Use Push-to-Talk below to speak your commands.', timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+  ]);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const chatEndRef = useRef(null);
+  const audioRef = useRef(null); // Persistent audio reference to prevent garbage collection
+
   // Real Data State from DB / Vector Store
   const [registeredObjects, setRegisteredObjects] = useState([]);
   const [identifiedObjects, setIdentifiedObjects] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Audio STT WebSocket Hook Connection
-  const { isRecording, transcript, aiResponse, startRecording, stopRecording, wsConnected } = useAudioWS();
+  const [token, setToken] = useState(localStorage.getItem('vision_assist_token'));
 
-// 1. Fetch Zones from PostgreSQL DB on mount
+
+  
+  // Auto-Scroll chat history to the bottom.
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  // Update token state when user logs in successfully
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setToken(localStorage.getItem('vision_assist_token'));
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+    // Audio STT WebSocket Hook Connection
+  const { isRecording, transcript, aiResponse, startRecording, stopRecording, wsConnected } = useAudioWS(token);
+
+  // Helper to add messages & play backend TTS response
+  const handleAssistantResponse = async (message) => {
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setChatMessages(prev => [...prev, { sender: 'assistant', message, timestamp: timeStr }]);
+    await speakText(message);
+  }
+  // Standalone text-to-speech speaker for automated responses or manual replay
+  const speakText = async (textToSpeak) => {
+    try {
+      setIsSpeaking(true);
+      const res = await fetch('/tts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('vision_assist_token')}`
+        },
+        body: JSON.stringify({ text: textToSpeak })
+      });
+      
+      if (res.ok) {
+        const audioBlob = await res.blob();
+        const playableBlob = new Blob([audioBlob], { type: 'audio/mpeg' });
+        const audioUrl = URL.createObjectURL(playableBlob);
+        
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+        
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+        
+        audio.onended = () => {
+          setIsSpeaking(false);
+          URL.revokeObjectURL(audioUrl);
+        };
+        audio.onerror = (e) => {
+          console.error("Audio playback error:", e);
+          setIsSpeaking(false);
+        };
+        
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(error => {
+            console.error("Browser blocked audio playback:", error);
+            setIsSpeaking(false);
+          });
+        }
+      } else {
+        console.error("Failed to fetch TTS audio:", res.statusText);
+        setIsSpeaking(false);
+      }
+    } catch (err) {
+      console.error("Failed to request TTS:", err);
+      setIsSpeaking(false);
+    }
+  };
+
+  // 1. Fetch Zones from PostgreSQL DB on mount
   const fetchZones = async () => {
     try {
       const res = await fetch('/api/v1/zones', {
@@ -32,12 +114,13 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
       }
     } catch (err) {
       console.error("Failed to load zones from database:", err);
-      // Fallback default zones if DB fetch fails
-      setZones([
-        { id: 'zone-1', name: 'Zone 1: Main Lobby' },
-        { id: 'zone-2', name: 'Zone 2: Server Room' },
-        { id: 'zone-3', name: 'Zone 3: Perimeter' }
-      ]);
+      const fallbackZones = [
+        { id: 1, name: 'Zone 1: Main Living Zone' },
+        { id: 2, name: 'Zone 2: Master Bedroom' },
+        { id: 3, name: 'Zone 3: Kitchen Zone' }
+      ];
+      setZones(fallbackZones);
+      setSelectedZone(fallbackZones[0].id);
     }
   };
 
@@ -70,12 +153,13 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
       console.error("Failed to load active zone objects:", err);
     }
   };
-// Initial Load: Fetch Zones on Mount
+
+  // Initial Load: Fetch Zones on Mount
   useEffect(() => {
     fetchZones();
   }, []);
 
-// Fetch zone items & setup polling whenever selectedZone changes
+  // Fetch zone items & setup polling whenever selectedZone changes
   useEffect(() => {
     if (!selectedZone) return;
     setLoading(true);
@@ -84,24 +168,30 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
       fetchZoneIdentifiedObjects(selectedZone)
     ]).finally(() => setLoading(false));
 
-    // Poll live zone detections every 5 seconds
     const interval = setInterval(() => {
       fetchZoneIdentifiedObjects(selectedZone);
-    }, 5000);
+    }, 9500);
 
     return () => clearInterval(interval);
   }, [selectedZone]);
 
-  // Sync AI Transcript Response from Audio Hook
+  // Sync AI Transcript & Response from Audio Hook
   useEffect(() => {
-    if (transcript) setSearchQuery(transcript);
-    if (aiResponse) setGenieOutput(aiResponse);
+    if (transcript) {
+      setSearchQuery(transcript);
+      const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      setChatMessages(prev => [...prev, { sender: 'user', message: transcript, timestamp: timeStr }]);
+    }
+    if (aiResponse) {
+      handleAssistantResponse(aiResponse);
+    }
   }, [transcript, aiResponse]);
 
   // 4. Search Database for Registered Item
   const handleSearchRegisteredItem = async (itemName) => {
     setSearchQuery(itemName);
-    setGenieOutput(`Querying vector store for: "${itemName}"...`);
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setChatMessages(prev => [...prev, { sender: 'user', message: `Query: ${itemName}`, timestamp: timeStr }]);
     
     try {
       const res = await fetch('/api/v1/search', {
@@ -113,15 +203,18 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
         body: JSON.stringify({ query: itemName, zone_id: selectedZone })
       });
       const data = await res.json();
-      setGenieOutput(data.message || `Found ${itemName} in ${data.zone || selectedZone}.`);
+      const responseMsg = data.message || `Found ${itemName} in zone ${selectedZone}.`;
+      handleAssistantResponse(responseMsg);
     } catch {
-      setGenieOutput(`Unable to locate ${itemName} in active vector indices.`);
+      handleAssistantResponse(`Unable to locate ${itemName} in active vector indices.`);
     }
   };
 
   // 5. Register Identified Object into DB Vector Store
   const handleRegisterIdentifiedItem = async (item) => {
-    setGenieOutput(`Registering "${item.name}" into database vector store...`);
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    setChatMessages(prev => [...prev, { sender: 'user', message: `Register object: ${item.name}`, timestamp: timeStr }]);
+
     try {
       const res = await fetch('/api/v1/items/register', {
         method: 'POST',
@@ -137,11 +230,11 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
         })
       });
       if (res.ok) {
-        setGenieOutput(`Successfully registered "${item.name}" to database persistence!`);
+        handleAssistantResponse(`Successfully registered "${item.name}" to database persistence!`);
         fetchRegisteredObjects(); // Refresh left panel list
       }
     } catch {
-      setGenieOutput(`Failed to register ${item.name}. Check backend log stream.`);
+      handleAssistantResponse(`Failed to register ${item.name}. Check backend log stream.`);
     }
   };
 
@@ -201,7 +294,7 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
               <span className="text-xs text-slate-400 font-mono">PostgreSQL / Qdrant Active</span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-h-[420px] overflow-y-auto pr-1">
               {registeredObjects.length > 0 ? (
                 registeredObjects.map((item) => (
                   <div 
@@ -249,7 +342,7 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
           </div>
         </section>
 
-        {/* Right Panel: Objects Identified in Active Zone */}
+        {/* Right Panel: Objects Identified in Active Zone & Voice History Log */}
         <section className="lg:col-span-5 bg-slate-900/80 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between shadow-xl space-y-6">
           <div>
             <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
@@ -257,26 +350,26 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Objects Identified
               </h2>
               
-        {/* Dynamic Zone Selector mapped to PostgreSQL 'zones' table */}
+              {/* Dynamic Zone Selector */}
               <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-700/80 px-3 py-1 rounded-lg text-xs">
                 <Layers className="w-3.5 h-3.5 text-cyan-400" />
-                  <select 
-                    value={selectedZone} 
-                    onChange={(e) => setSelectedZone(Number(e.target.value))}
-                    className="bg-transparent text-slate-200 focus:outline-none cursor-pointer"
-                  >
-                    {zones && zones.length > 0 ? (
-                      zones.map((zone) => (
-                        <option key={zone.id} value={zone.id} className="bg-slate-900 text-slate-100">
-                          {zone.name}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="" disabled className="bg-slate-900 text-slate-400">
-                        Loading zones...
+                <select 
+                  value={selectedZone} 
+                  onChange={(e) => setSelectedZone(Number(e.target.value))}
+                  className="bg-transparent text-slate-200 focus:outline-none cursor-pointer"
+                >
+                  {zones && zones.length > 0 ? (
+                    zones.map((zone) => (
+                      <option key={zone.id} value={zone.id} className="bg-slate-900 text-slate-100">
+                        {zone.name}
                       </option>
-                    )}
-                  </select>
+                    ))
+                  ) : (
+                    <option value="" disabled className="bg-slate-900 text-slate-400">
+                      Loading zones...
+                    </option>
+                  )}
+                </select>
               </div>
             </div>
 
@@ -307,26 +400,57 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
             </div>
           </div>
 
-          {/* Genie Voice Intelligence Responses */}
-          <div className="border-t border-slate-800 pt-4 space-y-3">
-            <h3 className="font-semibold text-xs text-amber-300 flex items-center gap-1.5 uppercase tracking-wider">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Genie Voice Intelligence
-            </h3>
-
-            <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl text-xs">
-              <span className="block text-[10px] uppercase text-slate-500 font-semibold mb-1">Your Voice Query</span>
-              <p className="text-slate-300 italic">
-                {searchQuery ? `"${searchQuery}"` : "Hold 'Push to Talk' and speak..."}
-              </p>
+          {/* Genie Voice History Panel */}
+          <div className="border-t border-slate-800 pt-4 space-y-3 flex flex-col flex-1">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-xs text-amber-300 flex items-center gap-1.5 uppercase tracking-wider">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Genie Voice History
+              </h3>
+              <div className="flex items-center gap-1 text-[10px] font-mono text-cyan-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                <Volume2 className={`w-3 h-3 ${isSpeaking ? 'animate-bounce text-emerald-400' : 'text-slate-500'}`} />
+                {isSpeaking ? 'Speaking...' : 'tts:Ready'}
+              </div>
             </div>
 
-            <div className="bg-gradient-to-br from-indigo-950/50 to-slate-950 border border-amber-500/30 p-3 rounded-xl text-xs shadow-inner">
-              <span className="block text-[10px] uppercase text-amber-400 font-semibold mb-1 flex items-center gap-1">
-                <Flame className="w-3 h-3 text-amber-400" /> Genie Response
+            {/* Scrollable History Log Box */}
+            <div className="bg-slate-950 border border-slate-800 p-3 rounded-xl text-xs space-y-2.5 overflow-y-auto max-h-[190px] pr-1 flex-1">
+              {chatMessages.map((msg, idx) => (
+                <div 
+                  key={idx} 
+                  className={`p-2 rounded-lg flex flex-col ${
+                    msg.sender === 'user' 
+                      ? 'bg-slate-900/90 text-amber-200 border border-slate-800 ml-4' 
+                      : msg.sender === 'assistant'
+                      ? 'bg-indigo-950/40 text-slate-200 border border-indigo-900/30 mr-4'
+                      : 'bg-slate-900/40 text-slate-400 border border-slate-800 text-center italic'
+                  }`}
+                >
+                  {msg.sender !== 'system' && (
+                    <div className="flex justify-between items-center text-[9px] text-slate-400 font-mono mb-1">
+                      <span className="uppercase font-semibold">{msg.sender === 'user' ? 'Operator' : 'Genie'}</span>
+                      <span>{msg.timestamp}</span>
+                    </div>
+                  )}
+                  <p className="leading-relaxed">{msg.message}</p>
+                  {/* Replay Audio Button for Assistant Messages */}
+                  {msg.sender === 'assistant' && (
+                    <button 
+                      onClick={() => speakText(msg.message)}
+                      className="mt-2 self-start flex items-center gap-1 text-[10px] text-cyan-400 hover:text-cyan-300 cursor-pointer transition-colors"
+                    >
+                      <Volume2 className="w-3 h-3" /> Replay Audio
+                    </button>
+                  )}                  
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+
+            <div className="bg-gradient-to-br from-indigo-950/50 to-slate-950 border border-amber-500/30 p-2.5 rounded-xl text-xs shadow-inner flex items-center justify-between">
+              <span className="text-[11px] text-slate-300 italic">
+                {searchQuery ? `Last Voice Query: "${searchQuery}"` : "Hold 'Push to Talk' and speak your command..."}
               </span>
-              <p className="text-amber-100 leading-relaxed">
-                {genieOutput}
-              </p>
+              <Flame className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             </div>
           </div>
         </section>
