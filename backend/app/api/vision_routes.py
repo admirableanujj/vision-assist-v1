@@ -1,12 +1,16 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect,Query
 import logging
 
-from app.engines.vision import get_engine
+from app.engines.vision import get_engine, resolve_engine_key
 
 logger = logging.getLogger("vision_routes")
 router = APIRouter(tags=["Vision & Object Detection"])
 
-_VALID_ENGINES = {"yolo", "yoloe"}
+# App-facing choice is deliberately just these two, so a user can clearly
+# compare base vs. fine-tuned detection on the same scene. YOLOE still works
+# as a config-only option (VISION_MODEL_TYPE=yoloe) for anyone who wants it,
+# just not exposed here or in the frontend toggle.
+_VALID_ENGINES = {"yolo", "finetuned"}
 
 # FallbackVisionEngine reports box=None (nothing real to draw around), but the
 # frontend's canvas overlay destructures `box` unconditionally with no null
@@ -28,7 +32,7 @@ async def vision_websocket(
 ):
     await websocket.accept()
 
-    # Per-connection engine choice (?engine=yolo|yoloe), defaulting to
+    # Per-connection engine choice (?engine=yolo|finetuned), defaulting to
     # VISION_MODEL_TYPE if omitted — get_engine() caches instances, so
     # switching engines only pays a load cost the first time each one is
     # actually requested; the frontend reconnects with a different ?engine=
@@ -38,8 +42,11 @@ async def vision_websocket(
         logger.warning(f"Unknown engine '{engine}' requested, falling back to default.")
         requested = None
     tracker = get_engine(requested or None)
+    # "yolo" and "finetuned" both build a YOLOVisionEngine - type(tracker).__name__
+    # can't distinguish them, so report the resolved key instead.
+    engine_key = resolve_engine_key(requested or None)
 
-    logger.info(f"Client connected to Vision WebSocket stream (engine={type(tracker).__name__}).")
+    logger.info(f"Client connected to Vision WebSocket stream (engine={engine_key}).")
 
     try:
         while True:
@@ -53,7 +60,7 @@ async def vision_websocket(
             # `detections` alone, so `annotated_frame` is never sent.
             await websocket.send_json({
                 "status": "success",
-                "engine": type(tracker).__name__,
+                "engine": engine_key,
                 "zone": zone,
                 "detections": _wire_safe_detections(result["detections"]),
             })
