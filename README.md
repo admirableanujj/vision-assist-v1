@@ -19,7 +19,7 @@ frontend, communicating over REST + WebSockets.
        │                   │                      │
        ▼                   ▼                      ▼
  +-----------+     +---------------+      +---------------------+
- | PostgreSQL|     |  YOLO / YOLOE |      | Whisper STT + Ollama |
+ | PostgreSQL|     |YOLO/Fine-tuned|      | Whisper STT + Ollama |
  | (Users/Log)     | (Vision Engine)      | (Audio + Intent)     |
  +-----------+     +---------------+      +---------------------+
 ```
@@ -59,28 +59,35 @@ New-Item -ItemType Directory -Path secrets -Force | Out-Null
 > no trailing newline** — the file's bytes are used verbatim as the
 > password/API key. The `printf '%s'` (bash) and `[IO.File]::WriteAllText`
 > (PowerShell) commands above produce exactly that. Check with
-> `file secrets/*.txt` (expect `ASCII text, with no line terminators`) or, in
-> PowerShell, `Format-Hex secrets\postgres_password.txt` (no leading
+> `file secrets/*` (expect `ASCII text, with no line terminators`) or, in
+> PowerShell, `Format-Hex secrets\postgres_password` (no leading
 > `FF FE`/`EF BB BF`, no trailing `0D 0A`). If Docker ever creates
 > `secrets/postgres_password` or `secrets/qdrant_api_key` as empty
-> **folders**, the `.txt` files were missing at `docker-compose up` — delete
+> **folders**, those files were missing at `docker-compose up` — delete
 > those folders, create the files, and start again.
+
+> **`POSTGRES_HOST`** (set in `.env`) defaults to `vision_assist_db`, which
+> works for plain Docker/Docker Desktop. **In GitHub Codespaces, set it to
+> `host.docker.internal` instead** — direct container-to-container bridge
+> routing was found broken there; see
+> **`docs/TESTING_LOCAL_AND_CODESPACES.md`** for the exact command.
 
 Then open `http://localhost:3000`. For a verified setup walkthrough — local
 or GitHub Codespaces, including test credentials — see
 **`docs/TESTING_LOCAL_AND_CODESPACES.md`**.
 
-## Vision: YOLO / YOLOE
+## Vision: YOLO / Fine-tuned YOLO
 
-Object detection defaults to YOLO26n (COCO's 80 classes). YOLOE, an
-open-vocabulary alternative, can detect additional classes (e.g. `keys`,
-`wallet`, `sunglasses` — none of which are COCO classes) at a lower accuracy.
-Switch between them live from the camera dashboard's header toggle — no
-restart needed; the startup default is still set via `VISION_MODEL_TYPE` in
-`.env`. See **`docs/YOLO_VS_YOLOE_GUIDE.md`** for the full comparison and
-switching details, and **`docs/FINE_TUNING_YOLO_GUIDE.md`** for the
-(planning-only) plan to close that class gap with a real fine-tuned model
-instead of zero-shot detection.
+Object detection defaults to YOLO26n (COCO's 80 classes). The live camera
+dashboard's header toggle switches between that base model and this
+project's own **fine-tuned** model — a curated 48-class home/garage
+lost-and-found vocabulary (20 kept COCO classes + 28 new ones, e.g.
+`keys`, `wallet`, `sunglasses`, `screwdriver`) — no restart needed. See
+**`docs/FINE_TUNING_YOLO_GUIDE.md`** for the full training/eval writeup
+(status: done and deployed — `finetuning/kaggle/RUN_LOG.md` has the
+complete experiment record) and **`docs/YOLO_VS_YOLOE_GUIDE.md`** for
+YOLOE, an open-vocabulary third option still in the codebase and usable
+via the `VISION_MODEL_TYPE=yoloe` env var, but not in the live UI toggle.
 
 ## Architecture
 

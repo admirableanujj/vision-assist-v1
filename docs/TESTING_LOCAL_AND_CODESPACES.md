@@ -1,16 +1,25 @@
-# Testing YOLO / YOLOE — Locally and in GitHub Codespaces
+# Testing the Vision Engines — Locally and in GitHub Codespaces
 
 A quick, tested path to actually seeing the vision engine work, in both
 environments. Covers two ways to test: a **direct WebSocket check** (fastest,
 bypasses login entirely — good for confirming the engine itself works) and
-the **full browser flow** (login → camera → live detections).
+the **full browser flow** (login → camera → live detections). Three engines
+exist (`backend/app/engines/vision/vision_engine.py`): **YOLO** (base,
+COCO-pretrained) and **Fine-tuned YOLO** (this project's own 48-class
+lostfound checkpoint) are both reachable live from the UI's header toggle,
+no restart needed; **YOLOE** (open-vocabulary) is config-only now — not in
+the UI toggle, only reachable via `VISION_MODEL_TYPE=yoloe` + a restart
+(see "Switching to YOLOE" below).
 
 ## Quick start (GitHub Codespaces)
 
 Already inside a Codespace opened from this repo (so no `git clone` needed).
 Set your machine to **4-core/16GB** first (command palette → "Codespaces:
-Change Machine Type") — torch + ultralytics + YOLOE's CLIP dependency is
-tight on the 2-core/8GB default.
+Change Machine Type") — `get_engine()` can hold up to 3 ultralytics models
+resident at once (`yolo`, `finetuned`, `yoloe`, each loaded lazily the first
+time it's actually used), and YOLOE additionally pulls in a CLIP dependency;
+either one alone is tight on the 2-core/8GB default, let alone several
+resident together.
 
 **Step 1** — env, secrets, build+start, all in one paste. `precheck_db.py`
 now creates the full schema and seeds test accounts automatically on first
@@ -18,10 +27,10 @@ boot (see "DB seeding" below) — no manual DB workaround needed anymore:
 
 ```bash
 cp .env.example .env
-printf '\nPOSTGRES_USER=postgres\nPOSTGRES_DB=vision_assist\n' >> .env
+printf '\nPOSTGRES_USER=postgres\nPOSTGRES_DB=vision_assist\nPOSTGRES_HOST=host.docker.internal\n' >> .env
 mkdir -p secrets
-printf '%s' 'devpassword123' > secrets/postgres_password.txt
-printf '%s' 'unused-for-now' > secrets/qdrant_api_key.txt
+printf '%s' 'devpassword123' > secrets/postgres_password
+printf '%s' 'unused-for-now' > secrets/qdrant_api_key
 
 docker-compose up -d --build --no-deps backend postgres frontend
 docker logs -f vision_assist_api   # wait for "DB migrations completed successfully."
@@ -30,6 +39,12 @@ echo ""
 echo "Open: https://${CODESPACE_NAME}-3000.${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
 echo "Login: test_user / test_user"
 ```
+
+`POSTGRES_HOST=host.docker.internal` above is required specifically in
+Codespaces — direct container-to-container bridge DNS (the `.env.example`
+default, `vision_assist_db`) was found broken there; routing through the
+host (`extra_hosts: host-gateway` in `docker-compose.yml`) works instead.
+Plain local Docker doesn't need this override.
 
 Click the printed URL (if the port shows Private and won't load: Ports tab →
 right-click port 3000 → Port Visibility → Public), log in. You'll land on
@@ -53,7 +68,8 @@ ws.close()
 
 Expect `{"status": "success", "detections": [...]}`. The rest of this guide
 below is the same workflow spelled out step by step (useful for local Docker
-setup, understanding what the quick start does, or switching to YOLOE).
+setup, understanding what the quick start does, trying the fine-tuned
+engine, or switching to YOLOE).
 
 ## DB seeding — automatic, no workaround needed
 
@@ -82,8 +98,8 @@ cd vision-assist-v1
 cp .env.example .env
 
 mkdir -p secrets
-printf '%s' 'devpassword123' > secrets/postgres_password.txt
-printf '%s' 'unused-for-now' > secrets/qdrant_api_key.txt
+printf '%s' 'devpassword123' > secrets/postgres_password
+printf '%s' 'unused-for-now' > secrets/qdrant_api_key
 ```
 
 On Windows (PowerShell), create the secrets like this instead:
@@ -93,24 +109,27 @@ On Windows (PowerShell), create the secrets like this instead:
 # without care: they can write UTF-16 or add a BOM/trailing newline, which
 # corrupts the secret. WriteAllText writes UTF-8 with no BOM and no newline.
 New-Item -ItemType Directory -Path secrets -Force | Out-Null
-[IO.File]::WriteAllText("$PWD\secrets\postgres_password.txt", 'devpassword123')
-[IO.File]::WriteAllText("$PWD\secrets\qdrant_api_key.txt", 'unused-for-now')
+[IO.File]::WriteAllText("$PWD\secrets\postgres_password", 'devpassword123')
+[IO.File]::WriteAllText("$PWD\secrets\qdrant_api_key", 'unused-for-now')
 ```
 
 > **Secret file format:** each file in `secrets/` must be **UTF-8, no BOM,
 > no trailing newline** — the file's bytes are used verbatim as the
 > password/API key. The `printf '%s'` (bash) and `[IO.File]::WriteAllText`
 > (PowerShell) commands above produce exactly that. Check with
-> `file secrets/*.txt` (expect `ASCII text, with no line terminators`) or, in
-> PowerShell, `Format-Hex secrets\postgres_password.txt` (no leading
+> `file secrets/*` (expect `ASCII text, with no line terminators`) or, in
+> PowerShell, `Format-Hex secrets\postgres_password` (no leading
 > `FF FE`/`EF BB BF`, no trailing `0D 0A`). If Docker ever creates
 > `secrets/postgres_password` or `secrets/qdrant_api_key` as empty
-> **folders**, the `.txt` files were missing at `docker-compose up` — delete
+> **folders**, those files were missing at `docker-compose up` — delete
 > those folders, create the files, and start again.
 
 Edit `.env` and set `POSTGRES_USER=postgres`, `POSTGRES_DB=vision_assist` —
-the password itself comes only from `secrets/postgres_password.txt`
-(`POSTGRES_PASSWORD_FILE` in `docker-compose.yml`), not from `.env`.
+the password itself comes only from `secrets/postgres_password`
+(`POSTGRES_PASSWORD_FILE` in `docker-compose.yml`), not from `.env`. On
+plain local Docker, `POSTGRES_HOST`'s default (`vision_assist_db`) is fine
+as-is — the `host.docker.internal` override above is only needed in
+Codespaces.
 
 Bring up just what vision testing needs — `--no-deps` skips `backend`'s
 `ollama`/`qdrant` dependency check, so you don't need those containers at all:
@@ -132,7 +151,10 @@ pip install websocket-client   # one-off, local machine
 python3 -c "
 import websocket, json
 
-ws = websocket.create_connection('ws://localhost:8000/ws/vision')
+# ?engine= is optional — omit it for VISION_MODEL_TYPE's startup default,
+# or pass 'yolo' / 'finetuned' explicitly (YOLOE isn't a valid value here;
+# see 'Switching to YOLOE' below for that one).
+ws = websocket.create_connection('ws://localhost:8000/ws/vision?engine=finetuned')
 with open('test_photo.jpg', 'rb') as f:   # any real JPEG with a person/object in it
     ws.send_binary(f.read())
 print(json.loads(ws.recv()))
@@ -140,10 +162,10 @@ ws.close()
 "
 ```
 
-Expect `{\"status\": \"success\", \"detections\": [...]}`. An empty
-`detections` list just means nothing in that photo scored above the 0.5
-confidence threshold — try a clearer/closer photo before assuming something's
-broken.
+Expect `{\"status\": \"success\", \"engine\": \"finetuned\", \"detections\": [...]}`.
+An empty `detections` list just means nothing in that photo scored above the
+0.5 confidence threshold — try a clearer/closer photo before assuming
+something's broken.
 
 ### Option B — full browser flow
 
@@ -159,7 +181,30 @@ docker logs vision_assist_api | grep -i "VisionEngine loaded"
 # "YOLOVisionEngine loaded '/opt/weights/yolo26n.pt' (conf>=0.5)." by default
 ```
 
+### Trying the Fine-tuned YOLO engine (no restart needed)
+
+Click **Fine-tuned YOLO** in the header toggle, right next to **YOLO** —
+first click after boot takes a moment (constructing the engine); after
+that it's instant, and `get_engine()` keeps both cached so switching back
+and forth never re-pays the load cost. Confirm the real checkpoint loaded:
+
+```bash
+docker logs vision_assist_api | grep -i "VisionEngine loaded"
+# add, once you've clicked the toggle:
+# "YOLOVisionEngine loaded '/opt/weights/lostfound_yolo26n_best.pt' (conf>=0.5)."
+```
+
+Point the camera at something in the 20 kept COCO classes (`person`,
+`backpack`, `cell phone`, ...) and something COCO never had (`keys`,
+`wallet`, `screwdriver`, ...) — the fine-tuned model should catch both; base
+YOLO will only ever catch the first kind. That contrast is the whole point
+of the toggle — see `FINE_TUNING_YOLO_GUIDE.md` for the full 48-class list
+and the training/eval writeup behind this checkpoint.
+
 ### Switching to YOLOE
+
+Not in the live UI toggle — YOLOE is reachable only via `VISION_MODEL_TYPE`
+plus a backend restart, same as before this project had a fine-tuned model:
 
 ```bash
 echo "VISION_MODEL_TYPE=yoloe" >> .env
@@ -168,11 +213,12 @@ docker logs vision_assist_api | grep -i "VisionEngine loaded"
 # "YOLOEVisionEngine loaded '/opt/weights/yoloe-26n-seg.pt' with classes=[...] (conf>=0.5)."
 ```
 
-Re-run Option A or B with the same photo. Expect `keys`/`wallet`/`sunglasses`
-to become detectable (if present in frame) and everyday classes both engines
-know (e.g. `person`) to score visibly lower than YOLO reported — see
-`YOLO_VS_YOLOE_GUIDE.md` for why. Switch back by removing the line from `.env`
-and restarting `backend` again.
+Re-run Option A (`?engine=yoloe` isn't accepted by `/ws/vision` — this env
+var is what actually selects it) or Option B with the same photo. Expect
+`keys`/`wallet`/`sunglasses` to become detectable (if present in frame) and
+everyday classes both engines know (e.g. `person`) to score visibly lower
+than YOLO reported — see `YOLO_VS_YOLOE_GUIDE.md` for why. Switch back by
+removing the line from `.env` and restarting `backend` again.
 
 ## GitHub Codespaces
 
