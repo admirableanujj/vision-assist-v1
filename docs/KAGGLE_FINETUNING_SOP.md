@@ -13,14 +13,16 @@ hyperparameters) see `docs/FINE_TUNING_YOLO_GUIDE.md` — this SOP tells you how
 to *execute* that plan, not why it's shaped the way it is, though every
 hyperparameter section below links back to the relevant Guide section.
 
-**There's also an interactive Claude Code skill that walks you through all of
-this conversationally** — `.claude/skills/kaggle-yolo-finetune/SKILL.md`. If
-you're working with Claude Code, just ask it to fine-tune YOLO on Kaggle, or
-run a hyperparameter sweep, and it'll load that skill and ask you the
-questions this document answers in prose. This SOP is still worth reading
-either way — the skill follows the exact same plan, and this doc is also what
-you'd hand to a colleague using a different agent (e.g. Codex), or follow by
-hand with no agent at all.
+**There's also an interactive agent skill that walks you through all of this
+conversationally** — `.agents/skills/kaggle-yolo-finetune/SKILL.md`. It is
+written in the open Agent Skills format and is not tied to one tool: Codex,
+Claude Code, Gemini CLI, Antigravity, Cursor and other harnesses that support
+the format pick it up automatically, so you can just ask your agent to
+fine-tune YOLO on Kaggle or run a hyperparameter sweep. If your agent has no
+skill support, tell it to read that file and follow it (the repo's root
+`AGENTS.md` says the same thing to the agent). This SOP is still worth
+reading either way — the skill follows the exact same plan, and this doc is
+what you'd follow by hand with no agent at all.
 
 ---
 

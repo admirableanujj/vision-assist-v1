@@ -16,8 +16,9 @@ captured/annotated first (`finetuning/README.md` Step 4).
 This document is the **why** (problem, class scheme, methodology,
 hyperparameter rationale). For the **how** — assuming zero prior Kaggle or
 fine-tuning experience, every hyperparameter explained, how to run a
-sweep — see `docs/KAGGLE_FINETUNING_SOP.md`, or the interactive
-`.claude/skills/kaggle-yolo-finetune/SKILL.md` for Claude Code.
+sweep — see `docs/KAGGLE_FINETUNING_SOP.md`, or the interactive,
+harness-neutral agent skill at
+`.agents/skills/kaggle-yolo-finetune/SKILL.md`.
 
 ## 1. The problem, precisely
 

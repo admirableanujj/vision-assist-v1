@@ -91,9 +91,10 @@ via the `VISION_MODEL_TYPE=yoloe` env var, but not in the live UI toggle.
 Want to run this fine-tuning yourself (new hyperparameters, a different
 sweep, a from-scratch repro) rather than just read about it? See
 **`docs/KAGGLE_FINETUNING_SOP.md`** — a zero-prior-Kaggle-experience SOP —
-or, if you're using Claude Code, just ask it to fine-tune YOLO on Kaggle
-and it'll pick up **`.claude/skills/kaggle-yolo-finetune/SKILL.md`** and
-walk you through it interactively.
+or ask your coding agent (Codex, Claude Code, Gemini CLI, Antigravity, or
+any other) to fine-tune YOLO on Kaggle: the harness-neutral skill at
+**`.agents/skills/kaggle-yolo-finetune/SKILL.md`** walks you through it
+interactively, and **`AGENTS.md`** points agents without skill support to it.
 
 ## Architecture
 

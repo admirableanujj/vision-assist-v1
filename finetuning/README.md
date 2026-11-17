@@ -14,8 +14,9 @@ This file (and the rest of this doc) assumes you already know how Kaggle
 and `kaggle kernels push` work — for the fully-spelled-out, zero-prior-
 experience version (account setup, every hyperparameter explained, how to
 run a sweep, troubleshooting), see **`docs/KAGGLE_FINETUNING_SOP.md`**, or
-point Claude Code at **`.claude/skills/kaggle-yolo-finetune/SKILL.md`** for
-an interactive, guided version of the same steps.
+point your coding agent (any harness) at
+**`.agents/skills/kaggle-yolo-finetune/SKILL.md`** for an interactive,
+guided version of the same steps.
 
 **Not the original 80-COCO-classes-plus-3 scheme.** This fine-tune keeps
 only 20 of COCO's 80 classes (small, portable, personally-owned items
