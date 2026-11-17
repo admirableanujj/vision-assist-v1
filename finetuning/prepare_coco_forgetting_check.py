@@ -34,7 +34,7 @@ import random
 import shutil
 from pathlib import Path
 
-from prepare_dataset import COCO_OLD_TO_NEW, LOSTFOUND_CLASS_NAMES, find_candidates
+from prepare_dataset import COCO_80_CLASSES, COCO_OLD_TO_NEW, LOSTFOUND_CLASS_NAMES, NUM_KEPT_COCO, find_candidates
 
 
 def write_eval_only_yaml(output_dir: Path):
@@ -63,6 +63,7 @@ def main():
     parser.add_argument("--coco-root", required=True, type=Path, help="Path to Ultralytics' downloaded coco/ dataset root")
     parser.add_argument("--output-dir", default=Path("./coco_forgetting_check"), type=Path)
     parser.add_argument("--sample-size", type=int, default=75, help="Guide Section 7.2 recommends ~50-100 images")
+    parser.add_argument("--coco80-output-dir", type=Path, default=None, help="If set, also write the SAME sampled images here with their ORIGINAL COCO 80-class ids (only the kept classes' boxes), plus a coco80.yaml (nc=80). This is what lets unmodified base YOLO be scored on exactly the same images as the fine-tuned models.")
     parser.add_argument("--seed", type=int, default=43)  # different default seed than prepare_dataset.py's training split, deliberately uncorrelated
     args = parser.parse_args()
 
@@ -75,7 +76,7 @@ def main():
     (out_images / "val").mkdir(parents=True, exist_ok=True)
     (out_labels / "val").mkdir(parents=True, exist_ok=True)
 
-    print("Scanning COCO val2017 labels for the 20 kept classes...")
+    print(f"Scanning COCO val2017 labels for the {NUM_KEPT_COCO} kept classes...")
     candidates = find_candidates(args.coco_root / "labels" / "val2017", args.coco_root / "images" / "val2017", COCO_OLD_TO_NEW)
     print(f"Found {len(candidates)} val2017 images containing at least one kept class.")
     if not candidates:
@@ -93,8 +94,26 @@ def main():
         (out_labels / "val" / f"{image_path.stem}.txt").write_text("\n".join(entry["lines"]) + "\n")
 
     write_eval_only_yaml(args.output_dir)
+
+    if args.coco80_output_dir is not None:
+        new_to_old = {new: old for old, new in COCO_OLD_TO_NEW.items()}
+        shutil.rmtree(args.coco80_output_dir, ignore_errors=True)
+        (args.coco80_output_dir / "images" / "val").mkdir(parents=True, exist_ok=True)
+        (args.coco80_output_dir / "labels" / "val").mkdir(parents=True, exist_ok=True)
+        for _stem, entry in sampled.items():
+            image_path = entry["image_path"]
+            lines = []
+            for line in entry["lines"]:
+                parts = line.split()
+                lines.append(f"{new_to_old[int(parts[0])]} {' '.join(parts[1:])}")
+            (args.coco80_output_dir / "images" / "val" / image_path.name).write_bytes(image_path.read_bytes())
+            (args.coco80_output_dir / "labels" / "val" / f"{image_path.stem}.txt").write_text("\n".join(lines) + "\n")
+        (args.coco80_output_dir / "coco80.yaml").write_text(
+            f"train: images/val\nval: images/val\n\nnc: {len(COCO_80_CLASSES)}\nnames: {COCO_80_CLASSES!r}\n"
+        )
+        print(f"Also wrote the same {len(sampled)} images with original COCO ids to {args.coco80_output_dir / 'coco80.yaml'}.")
     print(f"\nDone. {len(sampled)} images. Wrote {args.output_dir / 'lostfound.yaml'} "
-          f"(nc=48 — pass this as --coco-sample-yaml to evaluate.py).")
+          f"(nc={len(LOSTFOUND_CLASS_NAMES)} — pass this as --coco-sample-yaml to evaluate.py).")
 
 
 if __name__ == "__main__":

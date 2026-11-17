@@ -1,0 +1,17 @@
+{
+  "id": "dceshubh/visionassist-01-dataprep-noperson",
+  "title": "VisionAssist 01 Dataprep Noperson",
+  "code_file": "01_dataset_prep_and_eda_noperson.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": true,
+  "enable_tpu": false,
+  "dataset_sources": [
+    "dceshubh/vision-assist-finetuning-scripts"
+  ],
+  "kernel_sources": [],
+  "competition_sources": [],
+  "model_sources": []
+}
