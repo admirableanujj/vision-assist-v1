@@ -42,6 +42,63 @@ reflects the latest known-good state, not every attempt that got there.
   (`finetuning/evaluate.py`) — blocked on self-captured, annotated
   photos (`finetuning/README.md` Step 4), not a code or pipeline task.
 
+## No-person experiments (started 2026-11-16, branch `finetuning/no-person-clspw-sweep`)
+
+Review feedback: `person` is never a lost item and dominated the label counts,
+`cls_pw` had only been run at 0.5, and over/underfitting had not been analysed.
+The sections above describe the earlier 48-class sweep and stay as the record
+for it; nothing below changes the deployed model yet.
+
+**Setup.** 47 classes (the 19 kept COCO classes + the same 28 novel ones),
+built by `01_dataset_prep_and_eda_noperson.ipynb` (kernel
+`dceshubh/visionassist-01-dataprep-noperson`) with
+`LOSTFOUND_DROP_KEPT_CLASSES=person`. Everything else matches run 2:
+`--coco-sample-size 5000`, `freeze=10`, AdamW, `lr0=0.001`, `patience=15`,
+`epochs=100`. Three trainings differ only in `cls_pw`:
+
+| Kernel | `cls_pw` | Status |
+|---|---|---|
+| `dceshubh/visionassist-02-train-noperson-clspw00` | 0.0 | running (pushed 2026-11-16 ~22:40) |
+| `dceshubh/visionassist-02-train-noperson-clspw05` | 0.5 | running (pushed 2026-11-16 ~22:40) |
+| `dceshubh/visionassist-02-train-noperson-clspw10` | 1.0 | queued: Kaggle allows only 2 concurrent GPU sessions, so it is pushed when one of the first two finishes |
+
+**EDA, no-person dataset vs. the with-person run 2 dataset** (same 22,998 images,
+18,399 train / 4,599 val, same sampling seed):
+
+| | With person (run 2) | No person |
+|---|---|---|
+| Total box instances | 195,425 | 110,529 |
+| Max class instances | 91,476 (`person`) | 10,867 (`shoe`) |
+| Min class instances | 14 (`game controller`) | 14 (`game controller`) |
+| Imbalance ratio (max/min) | 6534.0x | 776.2x |
+| Classes with 0 instances | 0 | 0 |
+| Under the 50-instance floor | `hammer`, `toolbox`, `tape measure`, `passport`, `game controller` | same five |
+
+Removing `person` cut the imbalance ratio by about 8x, but the five sparse
+novel classes are untouched (they come from LVIS, not from the COCO sample), so
+they are the next data problem. Forgetting-check set: 2,051 COCO val2017 images
+(every image with at least one of the 19 kept classes, not a 75-image sample).
+
+**Over/underfitting analysis of the earlier three runs** (from each run's
+`results.csv`, now saved under `finetuning/runs/*/`): no run overfits. Validation
+loss never turns upward and train/val losses stay within a few percent of each
+other. At early stopping both are still falling slowly while mAP50-95 plateaus
+at 0.16-0.17, which is the underfitting pattern: capacity or data quality is the
+limit, not too many epochs. YOLO26 logs box, cls and L1 losses (no DFL loss).
+
+| Run | Epochs | Train box / cls (last) | Val box / cls (last) | Best mAP50-95 |
+|---|---|---|---|---|
+| 1 baseline | 55 | 1.505 / 0.394 | 1.486 / 0.428 | 0.171 (ep 40) |
+| 2 sample5000 | 63 | 1.486 / 0.383 | 1.458 / 0.421 | 0.164 (ep 48) |
+| 3 freeze=None | 86 | 1.464 / 0.380 | 1.474 / 0.437 | 0.164 (ep 71) |
+
+Note for the sweep: `cls_pw` changes the classification loss itself, so
+`cls_loss` values are not comparable across the three new runs; compare mAP.
+
+**Pending:** training results for the three runs, then
+`03_matched_eval_noperson.ipynb` (scores the three runs, run 2 and base YOLO on
+the same forgetting-check images), then the artifact.
+
 ## Archived model weights
 
 | Run | `freeze` | `--coco-sample-size` | Local path | Kaggle kernel |
