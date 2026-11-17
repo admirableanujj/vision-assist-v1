@@ -58,9 +58,9 @@ built by `01_dataset_prep_and_eda_noperson.ipynb` (kernel
 
 | Kernel | `cls_pw` | Status |
 |---|---|---|
-| `dceshubh/visionassist-02-train-noperson-clspw00` | 0.0 | running (pushed 2026-11-16 ~22:40) |
-| `dceshubh/visionassist-02-train-noperson-clspw05` | 0.5 | running (pushed 2026-11-16 ~22:40) |
-| `dceshubh/visionassist-02-train-noperson-clspw10` | 1.0 | queued: Kaggle allows only 2 concurrent GPU sessions, so it is pushed when one of the first two finishes |
+| `dceshubh/visionassist-02-train-noperson-clspw00` | 0.0 | done: 91 epochs (early-stopped), 7.57 h, best epoch 76, mAP50 0.253, mAP50-95 0.162 |
+| `dceshubh/visionassist-02-train-noperson-clspw05` | 0.5 | done: 76 epochs (early-stopped), 6.59 h, best epoch 61, mAP50 0.255, mAP50-95 0.165 |
+| `dceshubh/visionassist-02-train-noperson-clspw10` | 1.0 | running (pushed 2026-11-17 08:58, after a GPU slot freed; Kaggle allows only 2 concurrent GPU sessions) |
 
 **EDA, no-person dataset vs. the with-person run 2 dataset** (same 22,998 images,
 18,399 train / 4,599 val, same sampling seed):
@@ -95,7 +95,16 @@ limit, not too many epochs. YOLO26 logs box, cls and L1 losses (no DFL loss).
 Note for the sweep: `cls_pw` changes the classification loss itself, so
 `cls_loss` values are not comparable across the three new runs; compare mAP.
 
-**Pending:** training results for the three runs, then
+**Interim finding (overfitting, `cls_pw` 0.0 vs 0.5):** with `cls_pw=0.0` the
+validation classification loss stops improving at epoch 60 (2.306) and creeps
+up to 2.320 while the training classification loss keeps falling (to 1.874).
+That is the first overfitting signal in any run here. With `cls_pw=0.5`
+train and validation classification loss stay close (0.664 vs 0.746) and
+validation loss is still at its minimum when training stops. Own-validation
+mAP50-95 is nearly identical (0.162 vs 0.165), so this is not yet a verdict:
+the matched forgetting-check decides.
+
+**Pending:** training results for `cls_pw=1.0` for the three runs, then
 `03_matched_eval_noperson.ipynb` (scores the three runs, run 2 and base YOLO on
 the same forgetting-check images), then the artifact.
 
