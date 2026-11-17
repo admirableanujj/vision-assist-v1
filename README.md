@@ -98,5 +98,5 @@ interactively, and **`AGENTS.md`** points agents without skill support to it.
 
 ## Architecture
 
-See **`CLAUDE.md`** for the repository layout, request flow, and key design
+See **`AGENTS.md`** (read by any coding agent; `CLAUDE.md` just imports it) for the repository layout, request flow, and key design
 patterns.
