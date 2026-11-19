@@ -60,7 +60,7 @@ built by `01_dataset_prep_and_eda_noperson.ipynb` (kernel
 |---|---|---|
 | `dceshubh/visionassist-02-train-noperson-clspw00` | 0.0 | done: 91 epochs (early-stopped), 7.57 h, best epoch 76, mAP50 0.253, mAP50-95 0.162 |
 | `dceshubh/visionassist-02-train-noperson-clspw05` | 0.5 | done: 76 epochs (early-stopped), 6.59 h, best epoch 61, mAP50 0.255, mAP50-95 0.165 |
-| `dceshubh/visionassist-02-train-noperson-clspw10` | 1.0 | running (pushed 2026-11-17 08:58, after a GPU slot freed; Kaggle allows only 2 concurrent GPU sessions) |
+| `dceshubh/visionassist-02-train-noperson-clspw10` | 1.0 | done: 100 epochs (hit the cap, still improving), 8.02 h, best epoch 95, mAP50 0.222, mAP50-95 0.149 |
 
 **EDA, no-person dataset vs. the with-person run 2 dataset** (same 22,998 images,
 18,399 train / 4,599 val, same sampling seed):
@@ -104,9 +104,37 @@ validation loss is still at its minimum when training stops. Own-validation
 mAP50-95 is nearly identical (0.162 vs 0.165), so this is not yet a verdict:
 the matched forgetting-check decides.
 
-**Pending:** training results for `cls_pw=1.0` for the three runs, then
-`03_matched_eval_noperson.ipynb` (scores the three runs, run 2 and base YOLO on
-the same forgetting-check images), then the artifact.
+**Matched forgetting check** (`03_matched_eval_noperson.ipynb`, raw numbers in
+`finetuning/runs/noperson_matched_eval/matched_eval.json`): the same 2,051 COCO
+val2017 images for every model, mean mAP50-95 over the 19 kept classes
+(`person` excluded for every model, so the with-person run is compared fairly).
+
+| Model | Mean mAP50-95 (19 kept classes) | vs. base YOLO26n | Own-val mAP50-95 | Novel-class mean (28) |
+|---|---|---|---|---|
+| Base `yolo26n.pt` | 0.363 | n/a | n/a | n/a |
+| Run 2, with person, `cls_pw=0.5` (deployed) | 0.292 | -19.6% | 0.164 | not re-measured |
+| No person, `cls_pw=0.0` | 0.315 | -13.2% | 0.161 | 0.068 |
+| No person, `cls_pw=0.5` | 0.310 | -14.6% | 0.165 | 0.074 |
+| No person, `cls_pw=1.0` | 0.271 | -25.3% | 0.149 | 0.074 |
+
+Takeaways:
+- Dropping `person` helped the kept classes: the no-person 0.0/0.5 models lose
+  13-15% vs. base YOLO, against 19.6% for the deployed with-person model.
+- `cls_pw=1.0` is the worst on every measure and never early-stopped (still
+  improving at the 100-epoch cap), so full inverse weighting is too aggressive
+  here even at a 776x imbalance.
+- `cls_pw=0.0` vs `0.5` is a near tie on forgetting (0.315 vs 0.310) and own-val
+  (0.161 vs 0.165). `0.5` is better on the 28 novel classes (0.074 vs 0.068) and
+  does not show the classification-loss overfitting that `0.0` does, so it
+  stays the preferred setting.
+- Harness check: run 2 scores -19.6% on this 2,051-image set, consistent with
+  its -20.1% on the earlier 5,000-image set.
+- The first matched-eval pass scored run 2 near 0 because a symlinked image
+  folder made Ultralytics read unshifted labels; fixed by copying the images.
+
+**Still open:** the five sparse novel classes (`hammer`, `toolbox`,
+`tape measure`, `passport`, `game controller`) need more data, and indoor-only
+scenes remain parked. Neither the deployed model nor the app has changed.
 
 ## Archived model weights
 
