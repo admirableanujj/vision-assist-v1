@@ -113,9 +113,9 @@ val2017 images for every model, mean mAP50-95 over the 19 kept classes
 |---|---|---|---|---|
 | Base `yolo26n.pt` | 0.363 | n/a | n/a | n/a |
 | Run 2, with person, `cls_pw=0.5` (deployed) | 0.292 | -19.6% | 0.164 | not re-measured |
-| No person, `cls_pw=0.0` | 0.315 | -13.2% | 0.161 | 0.068 |
+| No person, `cls_pw=0.0` | 0.315 | -13.3% | 0.161 | 0.068 |
 | No person, `cls_pw=0.5` | 0.310 | -14.6% | 0.165 | 0.074 |
-| No person, `cls_pw=1.0` | 0.271 | -25.3% | 0.149 | 0.074 |
+| No person, `cls_pw=1.0` | 0.271 | -25.4% | 0.149 | 0.074 |
 
 Takeaways:
 - Dropping `person` helped the kept classes: the no-person 0.0/0.5 models lose
