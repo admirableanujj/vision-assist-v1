@@ -88,8 +88,15 @@ lost-and-found vocabulary (20 kept COCO classes + 28 new ones, e.g.
 complete experiment record) and **`docs/YOLO_VS_YOLOE_GUIDE.md`** for
 YOLOE, an open-vocabulary third option still in the codebase and usable
 via the `VISION_MODEL_TYPE=yoloe` env var, but not in the live UI toggle.
+Want to run this fine-tuning yourself (new hyperparameters, a different
+sweep, a from-scratch repro) rather than just read about it? See
+**`docs/KAGGLE_FINETUNING_SOP.md`** — a zero-prior-Kaggle-experience SOP —
+or ask your coding agent (Codex, Claude Code, Gemini CLI, Antigravity, or
+any other) to fine-tune YOLO on Kaggle: the harness-neutral skill at
+**`.agents/skills/kaggle-yolo-finetune/SKILL.md`** walks you through it
+interactively, and **`AGENTS.md`** points agents without skill support to it.
 
 ## Architecture
 
-See **`CLAUDE.md`** for the repository layout, request flow, and key design
+See **`AGENTS.md`** (read by any coding agent; `CLAUDE.md` just imports it) for the repository layout, request flow, and key design
 patterns.

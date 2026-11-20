@@ -9,6 +9,15 @@ UI as the "Fine-tuned" detection engine, alongside base YOLO for direct
 comparison. Still pending: `evaluate.py`'s real three-way golden-set
 benchmark, which needs real photography/annotation first (Step 4 below).
 
+**New to Kaggle or fine-tuning and want to run or sweep this yourself?**
+This file (and the rest of this doc) assumes you already know how Kaggle
+and `kaggle kernels push` work — for the fully-spelled-out, zero-prior-
+experience version (account setup, every hyperparameter explained, how to
+run a sweep, troubleshooting), see **`docs/KAGGLE_FINETUNING_SOP.md`**, or
+point your coding agent (any harness) at
+**`.agents/skills/kaggle-yolo-finetune/SKILL.md`** for an interactive,
+guided version of the same steps.
+
 **Not the original 80-COCO-classes-plus-3 scheme.** This fine-tune keeps
 only 20 of COCO's 80 classes (small, portable, personally-owned items
 plausible in a living room, home, or garage) and adds 28 new classes for
