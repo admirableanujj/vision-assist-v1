@@ -1,9 +1,12 @@
-# Fine-tuning YOLO26n: a curated 48-class home/garage lost & found model
+# Fine-tuning YOLO26n: a curated 47-class home/garage lost & found model
 
 Implementation of the plan in `docs/FINE_TUNING_YOLO_GUIDE.md`. **Status:
-done and deployed.** Three training variants were run on Kaggle and
-compared (`finetuning/kaggle/RUN_LOG.md` has the full record, including
-real GPU hours spent); the winner is baked into the app as
+done and deployed.** Six training runs in two rounds were compared
+(`finetuning/kaggle/RUN_LOG.md` has the full record, including real GPU
+hours spent; `docs/FINE_TUNING_FINDINGS.md` tells the story). Round 1 used a
+48-class scheme including `person`; after review feedback (a person is never
+a lost item) round 2 dropped it and compared `cls_pw` 0.0/0.5/1.0. The
+round-2 `cls_pw=0.5` model is baked into the app as
 `backend/weights/lostfound_yolo26n_best.pt` and selectable in the live
 UI as the "Fine-tuned" detection engine, alongside base YOLO for direct
 comparison. Still pending: `evaluate.py`'s real three-way golden-set
@@ -52,8 +55,12 @@ rationale on what was dropped and why.
   reference — Guide Section 4 has the full per-freeze-depth comparison
   (`freeze=None`/`10`/`23`) and the exact reasoning for why `10` was
   chosen; treat that as the source of truth if these two ever disagree.
-- **Classes**: 48 total.
-  - **20 kept from COCO** (new indices 0–19): `person`, `bicycle`, `backpack`, `umbrella`, `handbag`, `tie`, `suitcase`, `bottle`, `cup`, `book`, `scissors`, `teddy bear`, `toothbrush`, `laptop`, `mouse`, `remote`, `keyboard`, `cell phone`, `cat`, `dog`.
+- **Classes**: 47 total in the deployed model (48 in round 1, which also
+  kept `person`). `prepare_dataset.py` still produces the 48-class scheme by
+  default; set `LOSTFOUND_DROP_KEPT_CLASSES=person` (as
+  `01_dataset_prep_and_eda_noperson.ipynb` does) for the 47-class one, with
+  every later index shifted down by one.
+  - **19-20 kept from COCO** (indices from 0; the list below is round 1's 20, minus `person` for the deployed model): `person`, `bicycle`, `backpack`, `umbrella`, `handbag`, `tie`, `suitcase`, `bottle`, `cup`, `book`, `scissors`, `teddy bear`, `toothbrush`, `laptop`, `mouse`, `remote`, `keyboard`, `cell phone`, `cat`, `dog`.
   - **28 new** (indices 20–47): `keys`, `wallet`, `sunglasses`, `glasses`, `watch`, `earphone`, `flashlight`, `glove`, `belt`, `pen`, `notebook`, `calculator`, `stapler`, `battery`, `shoe`, `jacket`, `briefcase`, `passport`, `scarf`, `hat`, `screwdriver`, `wrench`, `pliers`, `hammer`, `toolbox`, `tape measure`, `ladder`, `game controller`. Every one of these is backed by a real, verified LVIS class id — see `prepare_dataset.py`'s `NOVEL_CLASSES` or Guide Section 2's table.
   - **Dropped**: the other 60 COCO classes — wild animals, street/outdoor infrastructure, vehicles, food, and fixed furniture/appliances. None of these are ever really "lost," and training capacity on them was capacity not spent on this product's actual job.
 - **Datasets consumed**:

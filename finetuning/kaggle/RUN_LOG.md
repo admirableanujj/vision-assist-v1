@@ -8,7 +8,34 @@ reflects the latest known-good state, not every attempt that got there.
 
 ---
 
-## Status (as of 2026-11-07)
+## Overall summary (as of 2026-11-20)
+
+Six training runs in two rounds; the narrative is in
+`docs/FINE_TUNING_FINDINGS.md`, an interactive report with charts at
+https://claude.ai/artifact/HGAei6Rwh9KQoDVcC4Uemj, and the per-epoch logs
+behind every number are `finetuning/runs/*/results.csv`.
+
+| Run | Round | Classes | What varied | Epochs | Best mAP50-95 | Final box loss (train / val) | Final cls loss (train / val) | Forgetting vs. base YOLO |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 1 | 48 | baseline (COCO sample 750) | 55 | 0.171 | 1.505 / 1.486 | 0.394 / 0.428 | -25.3% |
+| 2 | 1 | 48 | COCO sample 5,000 | 63 | 0.164 | 1.486 / 1.458 | 0.383 / 0.421 | -20.1% (5,000 img) / -19.6% (2,051 img) |
+| 3 | 1 | 48 | `freeze=None` | 86 | 0.164 | 1.464 / 1.474 | 0.380 / 0.437 | -32.0% |
+| 4 | 2 | 47, no person | `cls_pw` 0.0 | 91 | 0.162 | 1.643 / 1.720 | 1.874 / 2.320 | -13.3% |
+| 5 | 2 | 47, no person | `cls_pw` 0.5 (**deployed**) | 76 | 0.165 | 1.695 / 1.697 | 0.664 / 0.746 | **-14.6%** |
+| 6 | 2 | 47, no person | `cls_pw` 1.0 | 100 | 0.149 | 1.600 / 1.689 | 0.134 / 0.244 | -25.4% |
+
+Forgetting is mean mAP50-95 on the kept COCO classes relative to base YOLO26n
+on images no run trained on (round 1: 5,000 images, 20 classes; round 2: 2,051
+images, 19 classes). Loss values are comparable within a round, not across
+rounds or `cls_pw` values (see the findings doc, section 2).
+
+**Currently deployed: run 5** (no person, `cls_pw=0.5`) at
+`backend/weights/lostfound_yolo26n_best.pt`. Run 2, deployed until
+2026-11-20, is archived at `finetuning/runs/run2_sample5000_cls0.5_freeze10/`.
+The sections below keep each round's detail; "Round 1" sections describe the
+48-class era and are left as the historical record.
+
+## Status, round 1 (as of 2026-11-07)
 
 - **Notebook 1** (dataset prep + EDA): ✅ complete for both the baseline
   (`--coco-sample-size 750`) and the sweep variant (`5000`).
@@ -29,7 +56,7 @@ reflects the latest known-good state, not every attempt that got there.
   (`freeze=None`) made forgetting measurably worse on average and
   catastrophically worse on `toothbrush`/`dog` specifically — discarded.
   See the Catastrophic-forgetting check section below for the full table.
-- **Deployed.** Run 2 is now the project's baseline, not an experimental
+- **Deployed (superseded on 2026-11-20 by run 5, see the overall summary).** Run 2 was the project's baseline, not an experimental
   variant — `finetuning/prepare_dataset.py`'s own `--coco-sample-size`
   default and the main `01_dataset_prep_and_eda.ipynb` notebook were both
   updated to 5000, so re-running "the" pipeline from scratch reproduces
@@ -41,6 +68,106 @@ reflects the latest known-good state, not every attempt that got there.
 - **Not yet done:** the real golden-set 3-way benchmark
   (`finetuning/evaluate.py`) — blocked on self-captured, annotated
   photos (`finetuning/README.md` Step 4), not a code or pipeline task.
+
+## Round 2: no-person experiments (2026-11-16 to 2026-11-20, branch `finetuning/no-person-model`)
+
+Review feedback: `person` is never a lost item and dominated the label counts,
+`cls_pw` had only been run at 0.5, and over/underfitting had not been analysed.
+The sections above describe the earlier 48-class sweep and stay as the record
+for it. This round's `cls_pw=0.5` model replaced round 1's winner in the app.
+
+**Setup.** 47 classes (the 19 kept COCO classes + the same 28 novel ones),
+built by `01_dataset_prep_and_eda_noperson.ipynb` (kernel
+`dceshubh/visionassist-01-dataprep-noperson`) with
+`LOSTFOUND_DROP_KEPT_CLASSES=person`. Everything else matches run 2:
+`--coco-sample-size 5000`, `freeze=10`, AdamW, `lr0=0.001`, `patience=15`,
+`epochs=100`. Three trainings differ only in `cls_pw`:
+
+| Kernel | `cls_pw` | Status |
+|---|---|---|
+| `dceshubh/visionassist-02-train-noperson-clspw00` | 0.0 | done: 91 epochs (early-stopped), 7.57 h, best epoch 76, mAP50 0.253, mAP50-95 0.162 |
+| `dceshubh/visionassist-02-train-noperson-clspw05` | 0.5 | done: 76 epochs (early-stopped), 6.59 h, best epoch 61, mAP50 0.255, mAP50-95 0.165 |
+| `dceshubh/visionassist-02-train-noperson-clspw10` | 1.0 | done: 100 epochs (hit the cap, still improving), 8.02 h, best epoch 95, mAP50 0.222, mAP50-95 0.149 |
+
+**EDA, no-person dataset vs. the with-person run 2 dataset** (same 22,998 images,
+18,399 train / 4,599 val, same sampling seed):
+
+| | With person (run 2) | No person |
+|---|---|---|
+| Total box instances | 195,425 | 110,529 |
+| Max class instances | 91,476 (`person`) | 10,867 (`shoe`) |
+| Min class instances | 14 (`game controller`) | 14 (`game controller`) |
+| Imbalance ratio (max/min) | 6534.0x | 776.2x |
+| Classes with 0 instances | 0 | 0 |
+| Under the 50-instance floor | `hammer`, `toolbox`, `tape measure`, `passport`, `game controller` | same five |
+
+Removing `person` cut the imbalance ratio by about 8x, but the five sparse
+novel classes are untouched (they come from LVIS, not from the COCO sample), so
+they are the next data problem. Forgetting-check set: 2,051 COCO val2017 images
+(every image with at least one of the 19 kept classes, not a 75-image sample).
+
+**Over/underfitting analysis of the earlier three runs** (from each run's
+`results.csv`, now saved under `finetuning/runs/*/`): no run overfits. Validation
+loss never turns upward and train/val losses stay within a few percent of each
+other. At early stopping both are still falling slowly while mAP50-95 plateaus
+at 0.16-0.17, which is the underfitting pattern: capacity or data quality is the
+limit, not too many epochs. YOLO26 logs box, cls and L1 losses (no DFL loss).
+
+| Run | Epochs | Train box / cls (last) | Val box / cls (last) | Best mAP50-95 |
+|---|---|---|---|---|
+| 1 baseline | 55 | 1.505 / 0.394 | 1.486 / 0.428 | 0.171 (ep 40) |
+| 2 sample5000 | 63 | 1.486 / 0.383 | 1.458 / 0.421 | 0.164 (ep 48) |
+| 3 freeze=None | 86 | 1.464 / 0.380 | 1.474 / 0.437 | 0.164 (ep 71) |
+
+Note for the sweep: `cls_pw` changes the classification loss itself, so
+`cls_loss` values are not comparable across the three new runs; compare mAP.
+
+**Interim finding (overfitting, `cls_pw` 0.0 vs 0.5):** with `cls_pw=0.0` the
+validation classification loss stops improving at epoch 60 (2.306) and creeps
+up to 2.320 while the training classification loss keeps falling (to 1.874).
+That is the first overfitting signal in any run here. With `cls_pw=0.5`
+train and validation classification loss stay close (0.664 vs 0.746) and
+validation loss is still at its minimum when training stops. Own-validation
+mAP50-95 is nearly identical (0.162 vs 0.165), so this is not yet a verdict:
+the matched forgetting-check decides.
+
+**Matched forgetting check** (`03_matched_eval_noperson.ipynb`, raw numbers in
+`finetuning/runs/noperson_matched_eval/matched_eval.json`): the same 2,051 COCO
+val2017 images for every model, mean mAP50-95 over the 19 kept classes
+(`person` excluded for every model, so the with-person run is compared fairly).
+
+| Model | Mean mAP50-95 (19 kept classes) | vs. base YOLO26n | Own-val mAP50-95 | Novel-class mean (28) |
+|---|---|---|---|---|
+| Base `yolo26n.pt` | 0.363 | n/a | n/a | n/a |
+| Run 2, with person, `cls_pw=0.5` (deployed) | 0.292 | -19.6% | 0.164 | not re-measured |
+| No person, `cls_pw=0.0` | 0.315 | -13.3% | 0.161 | 0.068 |
+| No person, `cls_pw=0.5` | 0.310 | -14.6% | 0.165 | 0.074 |
+| No person, `cls_pw=1.0` | 0.271 | -25.4% | 0.149 | 0.074 |
+
+Takeaways:
+- Dropping `person` helped the kept classes: the no-person 0.0/0.5 models lose
+  13-15% vs. base YOLO, against 19.6% for the deployed with-person model.
+- `cls_pw=1.0` is the worst on every measure and never early-stopped (still
+  improving at the 100-epoch cap), so full inverse weighting is too aggressive
+  here even at a 776x imbalance.
+- `cls_pw=0.0` vs `0.5` is a near tie on forgetting (0.315 vs 0.310) and own-val
+  (0.161 vs 0.165). `0.5` is better on the 28 novel classes (0.074 vs 0.068) and
+  does not show the classification-loss overfitting that `0.0` does, so it
+  stays the preferred setting.
+- Harness check: run 2 scores -19.6% on this 2,051-image set, consistent with
+  its -20.1% on the earlier 5,000-image set.
+- The first matched-eval pass scored run 2 near 0 because a symlinked image
+  folder made Ultralytics read unshifted labels; fixed by copying the images.
+
+**Still open:** the five sparse novel classes (`hammer`, `toolbox`,
+`tape measure`, `passport`, `game controller`) need more data, and indoor-only
+scenes remain parked.
+
+**Deployed (2026-11-20):** run 5 (`noperson_clspw05`) was copied to
+`backend/weights/lostfound_yolo26n_best.pt`. The app's "Fine-tuned" engine now
+has 47 classes and no `person` class. Rollback: copy
+`finetuning/runs/run2_sample5000_cls0.5_freeze10/weights/best.pt` back to that
+path and rebuild the backend image.
 
 ## Archived model weights
 

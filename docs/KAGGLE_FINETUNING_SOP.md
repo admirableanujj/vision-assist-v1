@@ -268,6 +268,19 @@ out-of-the-box value if you never set the argument at all.
 | `cls_pw` | Inverse-class-frequency loss reweighting: classes with fewer training examples get their classification loss scaled up, so the model is penalized more for getting rare classes wrong. `1.0` = full inverse-frequency weighting; `0.0` = off. | `0.0` (off) | `0.5` (dampened, not full `1.0`) | The EDA found a 6534x max/min per-class instance-count ratio with 5 classes under a 50-instance floor. Full (`1.0`) weighting risks destabilizing the well-represented classes to chase a handful of classes that simply don't have enough real examples to learn well regardless of loss weight. This costs **zero** extra GPU time (it only reweights an existing loss term), so there's no reason to ever train without it once you know your dataset is imbalanced. |
 | `--coco-sample-size` (notebook 1's `prepare_dataset.py` flag, not a `model.train()` arg) | How many COCO `train2017` images (containing at least one of the 20 kept classes) get folded into the training set, on top of whatever LVIS already contributes. This is the catastrophic-forgetting mitigation — training on COCO's own images for the kept classes, not just the new LVIS-sourced images. | — (script-specific; the script's own hardcoded default is `5000`, raised from an original untested guess of `750`) | `5000` | Measured, not guessed: the sweep (Section 6) found `750` starved the rarest kept classes (`scissors`, `toothbrush`) of training images — raising it to `5000` improved the catastrophic-forgetting check on **every one** of the 20 kept classes, for only a marginal (0.007 mAP50-95) novel-class cost. |
 
+**Measured `cls_pw` results (no-person data, 47 classes):** 0.0 loses 13.3%
+of base YOLO's mAP50-95 on the kept classes and shows mild classification
+overfitting; 0.5 loses 14.6% and is best on the 28 new classes; 1.0 loses
+25.4%, never early-stops and has the widest train/validation gap. 0.5 is the
+default. Details: `docs/FINE_TUNING_FINDINGS.md`.
+
+**Dropping a class.** To train without a COCO class that does not belong in the
+product (this project dropped `person`), set the environment variable
+`LOSTFOUND_DROP_KEPT_CLASSES=person` before running `prepare_dataset.py`,
+`prepare_coco_forgetting_check.py` and `eda.py` (the no-person notebook does
+this in one cell). The class count and indices adjust automatically; do not
+edit the class list by hand.
+
 **How to tune any of these yourself:** change the literal value in
 `model.train(...)` inside `finetuning/02_train.ipynb` (or `--coco-sample-size`
 in notebook 1's `!python eda.py ...`/`prepare_dataset.py` cell), save the

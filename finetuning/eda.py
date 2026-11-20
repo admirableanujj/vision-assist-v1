@@ -145,7 +145,7 @@ def main():
             ax.set_xticks(range(len(names)))
             ax.set_xticklabels(names, rotation=90, fontsize=7)
             ax.set_ylabel("Instance count (train+val)")
-            ax.set_title("Per-class instance counts — blue = kept COCO (0-19), orange = novel LVIS (20-47)")
+            ax.set_title(f"Per-class instance counts — blue = kept COCO (0-{NUM_KEPT_COCO - 1}), orange = novel LVIS ({NUM_KEPT_COCO}-{len(LOSTFOUND_CLASS_NAMES) - 1})")
             if args.imbalance_floor:
                 ax.axhline(args.imbalance_floor, color="red", linestyle="--", linewidth=1, label=f"imbalance floor ({args.imbalance_floor})")
                 ax.legend()
