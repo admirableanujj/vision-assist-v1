@@ -29,12 +29,13 @@ DEFAULT_LOCAL_WEIGHTS = "/opt/weights/yolo26n.pt"
 # Open-vocabulary variant — see YOLO_VS_YOLOE_GUIDE.md for when to use it.
 DEFAULT_YOLOE_WEIGHTS = "/opt/weights/yoloe-26n-seg.pt"
 
-# Fine-tuned checkpoint: project's own 48-class lostfound scheme (20 kept
-# COCO classes remapped 0-19 + 28 novel LVIS-backed classes 20-47) - "run 2"
-# from the sweep in finetuning/kaggle/RUN_LOG.md (coco-sample-size=5000,
-# chosen over the baseline because it improved the forgetting check on
-# every one of the 20 kept classes). Baked into the image from this repo's
-# own backend/weights/ (see Dockerfile) - not a public Ultralytics release,
+# Fine-tuned checkpoint: project's own 47-class lostfound scheme (19 kept
+# COCO classes remapped 0-18 + 28 novel LVIS-backed classes 19-46; `person`
+# is deliberately NOT a class) - the no-person, cls_pw=0.5 run from the
+# second sweep in finetuning/kaggle/RUN_LOG.md. It forgets less on the kept
+# classes than the earlier 48-class model (-14.6% vs -19.6% against base
+# YOLO on the same images). Baked into the image from this repo's own
+# backend/weights/ (see Dockerfile) - not a public Ultralytics release,
 # so it can't be auto-downloaded like yolo26n.pt/yoloe-26n-seg.pt above.
 DEFAULT_FINETUNED_WEIGHTS = "/opt/weights/lostfound_yolo26n_best.pt"
 

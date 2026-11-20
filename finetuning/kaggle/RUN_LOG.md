@@ -8,7 +8,34 @@ reflects the latest known-good state, not every attempt that got there.
 
 ---
 
-## Status (as of 2026-11-07)
+## Overall summary (as of 2026-11-20)
+
+Six training runs in two rounds; the narrative is in
+`docs/FINE_TUNING_FINDINGS.md`, an interactive report with charts at
+https://claude.ai/artifact/HGAei6Rwh9KQoDVcC4Uemj, and the per-epoch logs
+behind every number are `finetuning/runs/*/results.csv`.
+
+| Run | Round | Classes | What varied | Epochs | Best mAP50-95 | Final box loss (train / val) | Final cls loss (train / val) | Forgetting vs. base YOLO |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 1 | 48 | baseline (COCO sample 750) | 55 | 0.171 | 1.505 / 1.486 | 0.394 / 0.428 | -25.3% |
+| 2 | 1 | 48 | COCO sample 5,000 | 63 | 0.164 | 1.486 / 1.458 | 0.383 / 0.421 | -20.1% (5,000 img) / -19.6% (2,051 img) |
+| 3 | 1 | 48 | `freeze=None` | 86 | 0.164 | 1.464 / 1.474 | 0.380 / 0.437 | -32.0% |
+| 4 | 2 | 47, no person | `cls_pw` 0.0 | 91 | 0.162 | 1.643 / 1.720 | 1.874 / 2.320 | -13.3% |
+| 5 | 2 | 47, no person | `cls_pw` 0.5 (**deployed**) | 76 | 0.165 | 1.695 / 1.697 | 0.664 / 0.746 | **-14.6%** |
+| 6 | 2 | 47, no person | `cls_pw` 1.0 | 100 | 0.149 | 1.600 / 1.689 | 0.134 / 0.244 | -25.4% |
+
+Forgetting is mean mAP50-95 on the kept COCO classes relative to base YOLO26n
+on images no run trained on (round 1: 5,000 images, 20 classes; round 2: 2,051
+images, 19 classes). Loss values are comparable within a round, not across
+rounds or `cls_pw` values (see the findings doc, section 2).
+
+**Currently deployed: run 5** (no person, `cls_pw=0.5`) at
+`backend/weights/lostfound_yolo26n_best.pt`. Run 2, deployed until
+2026-11-20, is archived at `finetuning/runs/run2_sample5000_cls0.5_freeze10/`.
+The sections below keep each round's detail; "Round 1" sections describe the
+48-class era and are left as the historical record.
+
+## Status, round 1 (as of 2026-11-07)
 
 - **Notebook 1** (dataset prep + EDA): ✅ complete for both the baseline
   (`--coco-sample-size 750`) and the sweep variant (`5000`).
@@ -29,7 +56,7 @@ reflects the latest known-good state, not every attempt that got there.
   (`freeze=None`) made forgetting measurably worse on average and
   catastrophically worse on `toothbrush`/`dog` specifically — discarded.
   See the Catastrophic-forgetting check section below for the full table.
-- **Deployed.** Run 2 is now the project's baseline, not an experimental
+- **Deployed (superseded on 2026-11-20 by run 5, see the overall summary).** Run 2 was the project's baseline, not an experimental
   variant — `finetuning/prepare_dataset.py`'s own `--coco-sample-size`
   default and the main `01_dataset_prep_and_eda.ipynb` notebook were both
   updated to 5000, so re-running "the" pipeline from scratch reproduces
@@ -42,12 +69,12 @@ reflects the latest known-good state, not every attempt that got there.
   (`finetuning/evaluate.py`) — blocked on self-captured, annotated
   photos (`finetuning/README.md` Step 4), not a code or pipeline task.
 
-## No-person experiments (started 2026-11-16, branch `finetuning/no-person-clspw-sweep`)
+## Round 2: no-person experiments (2026-11-16 to 2026-11-20, branch `finetuning/no-person-model`)
 
 Review feedback: `person` is never a lost item and dominated the label counts,
 `cls_pw` had only been run at 0.5, and over/underfitting had not been analysed.
 The sections above describe the earlier 48-class sweep and stay as the record
-for it; nothing below changes the deployed model yet.
+for it. This round's `cls_pw=0.5` model replaced round 1's winner in the app.
 
 **Setup.** 47 classes (the 19 kept COCO classes + the same 28 novel ones),
 built by `01_dataset_prep_and_eda_noperson.ipynb` (kernel
@@ -134,7 +161,13 @@ Takeaways:
 
 **Still open:** the five sparse novel classes (`hammer`, `toolbox`,
 `tape measure`, `passport`, `game controller`) need more data, and indoor-only
-scenes remain parked. Neither the deployed model nor the app has changed.
+scenes remain parked.
+
+**Deployed (2026-11-20):** run 5 (`noperson_clspw05`) was copied to
+`backend/weights/lostfound_yolo26n_best.pt`. The app's "Fine-tuned" engine now
+has 47 classes and no `person` class. Rollback: copy
+`finetuning/runs/run2_sample5000_cls0.5_freeze10/weights/best.pt` back to that
+path and rebuild the backend image.
 
 ## Archived model weights
 

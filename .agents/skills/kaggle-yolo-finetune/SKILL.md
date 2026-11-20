@@ -99,7 +99,9 @@ from memory), and ask whether to keep it or change it:
   script — usually fine to leave as-is; ask anyway.
 - `--imbalance-floor` for `eda.py` (default `50`) — the instance-count
   threshold under which a class gets flagged as under-represented.
-- The 48-class list itself (SOP Section 5 / Guide Section 2). Flag this as a
+- Whether to drop a kept COCO class (this project dropped `person`): set
+  `LOSTFOUND_DROP_KEPT_CLASSES` (SOP Section 4), do not edit the class list.
+- The class list itself (SOP Section 5 / Guide Section 2). Flag this as a
   bigger change than a hyperparameter — only touch it if the user explicitly
   asks to add/remove classes, and if so point them at `prepare_dataset.py`'s
   `NOVEL_CLASSES`/kept-class list and the requirement to confirm any new
