@@ -1,0 +1,21 @@
+{
+  "id": "dceshubh/visionassist-03-matched-eval-noperson",
+  "title": "VisionAssist 03 Matched Eval Noperson",
+  "code_file": "03_matched_eval_noperson.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": true,
+  "enable_tpu": false,
+  "dataset_sources": [],
+  "kernel_sources": [
+    "dceshubh/visionassist-01-dataprep-noperson",
+    "dceshubh/visionassist-02-train-noperson-clspw00",
+    "dceshubh/visionassist-02-train-noperson-clspw05",
+    "dceshubh/visionassist-02-train-noperson-clspw10",
+    "dceshubh/visionassist-02-train-sample5000"
+  ],
+  "competition_sources": [],
+  "model_sources": []
+}

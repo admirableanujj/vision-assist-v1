@@ -1,0 +1,17 @@
+{
+  "id": "dceshubh/visionassist-02-train-noperson-clspw10",
+  "title": "VisionAssist 02 Train Noperson Clspw10",
+  "code_file": "02_train_noperson_clspw10.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "enable_tpu": false,
+  "dataset_sources": [],
+  "kernel_sources": [
+    "dceshubh/visionassist-01-dataprep-noperson"
+  ],
+  "competition_sources": [],
+  "model_sources": []
+}

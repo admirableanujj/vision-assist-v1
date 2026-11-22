@@ -5,7 +5,7 @@ environments. Covers two ways to test: a **direct WebSocket check** (fastest,
 bypasses login entirely — good for confirming the engine itself works) and
 the **full browser flow** (login → camera → live detections). Three engines
 exist (`backend/app/engines/vision/vision_engine.py`): **YOLO** (base,
-COCO-pretrained) and **Fine-tuned YOLO** (this project's own 48-class
+COCO-pretrained) and **Fine-tuned YOLO** (this project's own 47-class
 lostfound checkpoint) are both reachable live from the UI's header toggle,
 no restart needed; **YOLOE** (open-vocabulary) is config-only now — not in
 the UI toggle, only reachable via `VISION_MODEL_TYPE=yoloe` + a restart
@@ -194,11 +194,11 @@ docker logs vision_assist_api | grep -i "VisionEngine loaded"
 # "YOLOVisionEngine loaded '/opt/weights/lostfound_yolo26n_best.pt' (conf>=0.5)."
 ```
 
-Point the camera at something in the 20 kept COCO classes (`person`,
-`backpack`, `cell phone`, ...) and something COCO never had (`keys`,
+Point the camera at something in the 19 kept COCO classes (`backpack`,
+`cell phone`, `laptop`, ...; the fine-tuned model deliberately has no `person` class) and something COCO never had (`keys`,
 `wallet`, `screwdriver`, ...) — the fine-tuned model should catch both; base
 YOLO will only ever catch the first kind. That contrast is the whole point
-of the toggle — see `FINE_TUNING_YOLO_GUIDE.md` for the full 48-class list
+of the toggle — see `FINE_TUNING_YOLO_GUIDE.md` for the class design
 and the training/eval writeup behind this checkpoint.
 
 ### Switching to YOLOE

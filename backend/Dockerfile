@@ -40,13 +40,12 @@ RUN mkdir -p /opt/weights
 RUN python -c "from ultralytics import YOLO; YOLO('/opt/weights/yolo26n.pt')"
 RUN python -c "from ultralytics import YOLOE; m = YOLOE('/opt/weights/yoloe-26n-seg.pt'); m.set_classes(['person'])"
 
-# Fine-tuned checkpoint (project's own 48-class lostfound scheme) - not a
-# public Ultralytics release, so it can't be fetched the way the two weights
-# above are; copied from this repo's own build context instead. This is
-# "run 2" from the fine-tuning sweep (finetuning/kaggle/RUN_LOG.md) -
-# coco-sample-size=5000, chosen over the original baseline because it
-# improved the catastrophic-forgetting check on every one of the 20 kept
-# COCO classes for only a marginal novel-class cost.
+# Fine-tuned checkpoint (project's own 47-class lostfound scheme, no
+# `person` class) - not a public Ultralytics release, so it can't be fetched
+# the way the two weights above are; copied from this repo's own build
+# context instead. This is the no-person, cls_pw=0.5 run from the second
+# fine-tuning sweep (finetuning/kaggle/RUN_LOG.md); the earlier 48-class
+# "run 2" model is archived under finetuning/runs/.
 COPY weights/lostfound_yolo26n_best.pt /opt/weights/lostfound_yolo26n_best.pt
 
 # Copy backend application source code

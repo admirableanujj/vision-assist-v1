@@ -5,12 +5,12 @@ import { useVisionWS } from '../hooks/useVisionWS';
 
 // Deliberately just these two (not a third YOLOE option) — the goal is a
 // clear, direct comparison of base vs. fine-tuned detection on this
-// project's 48-class lostfound scheme, not a third open-vocabulary mode.
+// project's 47-class lostfound scheme, not a third open-vocabulary mode.
 const ENGINE_OPTIONS = ['yolo', 'finetuned'];
 const ENGINE_LABELS = { yolo: 'YOLO', finetuned: 'Fine-tuned YOLO' };
 const ENGINE_TOOLTIPS = {
   yolo: 'Base model, fixed 80 COCO classes',
-  finetuned: 'Fine-tuned on this project\'s 48-class lostfound scheme (20 kept COCO classes + 28 new, e.g. keys/wallet/screwdriver)',
+  finetuned: 'Fine-tuned on this project\'s 47-class lostfound scheme (19 kept COCO classes + 28 new, e.g. keys/wallet/screwdriver; no person class)',
 };
 
 export default function CameraFeedDashboard({ user, onLogout, onToggleDashboard }) {

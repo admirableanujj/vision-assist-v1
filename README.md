@@ -80,12 +80,14 @@ or GitHub Codespaces, including test credentials — see
 
 Object detection defaults to YOLO26n (COCO's 80 classes). The live camera
 dashboard's header toggle switches between that base model and this
-project's own **fine-tuned** model — a curated 48-class home/garage
-lost-and-found vocabulary (20 kept COCO classes + 28 new ones, e.g.
-`keys`, `wallet`, `sunglasses`, `screwdriver`) — no restart needed. See
-**`docs/FINE_TUNING_YOLO_GUIDE.md`** for the full training/eval writeup
-(status: done and deployed — `finetuning/kaggle/RUN_LOG.md` has the
-complete experiment record) and **`docs/YOLO_VS_YOLOE_GUIDE.md`** for
+project's own **fine-tuned** model — a curated 47-class home/garage
+lost-and-found vocabulary (19 kept COCO classes + 28 new ones, e.g.
+`keys`, `wallet`, `sunglasses`, `screwdriver`; deliberately no `person`
+class, since a person is never a lost item) — no restart needed. See
+**`docs/FINE_TUNING_FINDINGS.md`** for the full story of the six training
+runs and why this model was chosen, **`docs/FINE_TUNING_YOLO_GUIDE.md`**
+for the training/eval design (status: done and deployed —
+`finetuning/kaggle/RUN_LOG.md` has the complete experiment record) and **`docs/YOLO_VS_YOLOE_GUIDE.md`** for
 YOLOE, an open-vocabulary third option still in the codebase and usable
 via the `VISION_MODEL_TYPE=yoloe` env var, but not in the live UI toggle.
 Want to run this fine-tuning yourself (new hyperparameters, a different

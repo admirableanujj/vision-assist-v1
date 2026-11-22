@@ -1,11 +1,19 @@
 # Fine-Tuning YOLO26n: Plan
 
-**Status: done, and deployed.** The dataset-prep script, the three Kaggle
-notebooks, and the eval harness described below exist in `finetuning/`
-(see `finetuning/README.md` for exact run steps). Three training
-variants were run and compared (`finetuning/kaggle/RUN_LOG.md` has the
-full record); the winner — `--coco-sample-size 5000`, `freeze=10`,
-`cls_pw=0.5` — is baked into the app as `backend/weights/lostfound_yolo26n_best.pt`
+**Status: done, and deployed (round 2).** The dataset-prep script, the
+Kaggle notebooks, and the eval harness described below exist in `finetuning/`
+(see `finetuning/README.md` for exact run steps). Six training runs in two
+rounds were compared (`finetuning/kaggle/RUN_LOG.md` has the full record and
+`docs/FINE_TUNING_FINDINGS.md` the narrative). **Round 1** (three runs, 48
+classes) picked `--coco-sample-size 5000`, `freeze=10`, `cls_pw=0.5`. After
+review feedback that `person` is never a lost item, **round 2** removed it
+(47 classes: 19 kept COCO + 28 new) and compared `cls_pw` 0.0/0.5/1.0; the
+`cls_pw=0.5` model forgets less than round 1's winner (-14.6% vs. -19.6%
+against base YOLO on the same images) and is what is deployed. **Sections
+2-4 below describe the original 48-class design (round 1); the deployed model
+is the same design minus the `person` class, so every kept-class count drops
+from 20 to 19 and every class index after `person` shifts down by one.** The
+checkpoint is baked into the app as `backend/weights/lostfound_yolo26n_best.pt`
 and selectable in the live UI as the "Fine-tuned" detection engine
 (`app/engines/vision/vision_engine.py`'s `"finetuned"` key), alongside
 base YOLO for direct comparison. Still pending: the real three-way

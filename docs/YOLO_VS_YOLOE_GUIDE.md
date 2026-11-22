@@ -5,7 +5,7 @@ selected by config, not code: `yolo`, `yoloe`, and `finetuned` (this project's
 own fine-tuned checkpoint — see `FINE_TUNING_YOLO_GUIDE.md`). **The live UI's
 toggle is YOLO vs. fine-tuned specifically**, not YOLO vs. YOLOE — that
 comparison matters more for this product (same architecture, this project's
-actual 48-class vocabulary, directly comparable detections) than YOLOE's
+actual 47-class vocabulary, directly comparable detections) than YOLOE's
 open-vocabulary tradeoff does. YOLOE still works, just as a config-only
 option (`VISION_MODEL_TYPE=yoloe`), not in the app's selectable toggle. This
 guide is the practical "which one, and how" reference for YOLO vs. YOLOE
@@ -129,5 +129,5 @@ tempting to make it the default. Don't, for two concrete reasons:
    to prototype with; a properly fine-tuned model (see
    `FINE_TUNING_YOLO_GUIDE.md` — done and deployed, selectable in the live
    UI as "Fine-tuned YOLO") is the higher-accuracy path on a curated
-   48-class vocabulary, already live, for exactly the cases where YOLOE's
+   47-class vocabulary, already live, for exactly the cases where YOLOE's
    zero-shot results prove insufficient for real use, not just a demo.

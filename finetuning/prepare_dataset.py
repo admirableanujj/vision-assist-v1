@@ -64,6 +64,7 @@ Produces:
     ./lostfound/lostfound.yaml
 """
 import argparse
+import os
 import random
 import shutil
 from pathlib import Path
@@ -97,6 +98,21 @@ KEPT_COCO_CLASS_NAMES = [
     "mouse", "remote", "keyboard", "cell phone", "cat", "dog",
 ]
 assert set(KEPT_COCO_CLASS_NAMES) <= set(COCO_80_CLASSES)
+
+# Optional: drop some of the kept COCO classes without editing this file, via
+# a comma-separated env var (e.g. LOSTFOUND_DROP_KEPT_CLASSES=person). An env
+# var rather than a CLI flag because prepare_coco_forgetting_check.py and
+# eda.py import this module's class scheme too, and all three have to agree
+# on it. Unset (the default) reproduces the deployed 48-class scheme exactly.
+# Dropped classes are removed entirely: their boxes are not written (the
+# objects become background), images containing ONLY dropped classes stop
+# being COCO candidates, and every later class index shifts down.
+_DROP_KEPT = [n.strip() for n in os.environ.get("LOSTFOUND_DROP_KEPT_CLASSES", "").split(",") if n.strip()]
+_unknown_drops = set(_DROP_KEPT) - set(KEPT_COCO_CLASS_NAMES)
+assert not _unknown_drops, f"LOSTFOUND_DROP_KEPT_CLASSES names not in KEPT_COCO_CLASS_NAMES: {sorted(_unknown_drops)}"
+KEPT_COCO_CLASS_NAMES = [n for n in KEPT_COCO_CLASS_NAMES if n not in _DROP_KEPT]
+if _DROP_KEPT:
+    print(f"[class scheme] LOSTFOUND_DROP_KEPT_CLASSES dropped {_DROP_KEPT}; {len(KEPT_COCO_CLASS_NAMES)} kept COCO classes remain.")
 
 # Maps each kept class's COCO label-file index (0-79) to its new index
 # (0-19) in this project's scheme.
@@ -326,6 +342,7 @@ def main():
         (out_images / split).mkdir(parents=True, exist_ok=True)
         (out_labels / split).mkdir(parents=True, exist_ok=True)
 
+    print(f"Class scheme: {len(LOSTFOUND_CLASS_NAMES)} classes = {NUM_KEPT_COCO} kept COCO (0-{NUM_KEPT_COCO - 1}) + {len(NOVEL_CLASSES)} novel ({NUM_KEPT_COCO}-{len(LOSTFOUND_CLASS_NAMES) - 1}).")
     print(f"Scanning LVIS train2017 labels for the {len(NOVEL_CLASSES)} novel classes...")
     # Scoped to train2017 only, same as the COCO call below — NOT the whole
     # labels/ tree. LVIS reuses COCO's own train2017/val2017 JPEGs verbatim,
