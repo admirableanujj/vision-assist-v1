@@ -124,7 +124,7 @@ def run_migrations_and_seeding():
         """
         CREATE TABLE IF NOT EXISTS items (
             id VARCHAR(100) PRIMARY KEY,
-            user_id BIGINT UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+            user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
             owner_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
             item_name VARCHAR(100) NOT NULL,
             description TEXT,
@@ -133,9 +133,16 @@ def run_migrations_and_seeding():
             created_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_modified_by VARCHAR(50),
             last_modified_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            embedding VARCHAR(512)
+            embedding TEXT
         );
         """,
+        # Upgrades for databases created before Qdrant registration was wired in
+        # (all idempotent):
+        #  - embedding held a 512-char VARCHAR, too small for the JSON-encoded
+        #    512-d CLIP vector that /items/register now stores there.
+        #  - items.user_id was UNIQUE, so a user's second registration failed.
+        "ALTER TABLE items ALTER COLUMN embedding TYPE TEXT;",
+        "ALTER TABLE items DROP CONSTRAINT IF EXISTS items_user_id_key;",
         # Zones Table
         """
         CREATE TABLE IF NOT EXISTS zones (

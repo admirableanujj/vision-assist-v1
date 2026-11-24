@@ -247,6 +247,86 @@ class QdrantItemStore:
         from qdrant_client.models import Filter, FieldCondition, MatchValue
         return Filter(must=[FieldCondition(key="owner_id", match=MatchValue(value=owner_id))])
 
+    # ------------------------------------------------- precomputed vectors
+    def index_item_vectors(
+        self,
+        item_id: str,
+        owner_id: int,
+        item_name: str,
+        description: str = "",
+        image_vector: Optional[Sequence[float]] = None,
+        thumbnail_b64: Optional[str] = None,
+        extra_payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, List[float]]:
+        """
+        Like index_item(), but for an image vector that was already computed
+        elsewhere (e.g. the crop embedding persisted in zone_cameras_embeddings
+        when the object was first seen on the stream) — avoids re-running CLIP
+        on the same pixels. The TEXT point is still embedded here.
+
+        Returns {"text": [...], "image": [...]} for whichever points were written,
+        so the caller can persist the embedding in Postgres (items.embedding).
+        """
+        from qdrant_client.models import PointStruct
+
+        created_at = datetime.now(timezone.utc).isoformat()
+        base_payload = {
+            "item_id": item_id,
+            "owner_id": owner_id,
+            "item_name": item_name,
+            "description": description,
+            "created_at": created_at,
+        }
+        if extra_payload:
+            base_payload.update(extra_payload)
+
+        written: Dict[str, List[float]] = {}
+        points: List[PointStruct] = []
+
+        text_blob = item_name if not description else f"{item_name}. {description}"
+        if text_blob.strip():
+            tvec = list(self.embedder.embed_text(text_blob))
+            written["text"] = tvec
+            points.append(PointStruct(
+                id=_point_id(item_id, "text"), vector=tvec,
+                payload={**base_payload, "modality": "text", "text": text_blob},
+            ))
+
+        if image_vector is not None:
+            ivec = list(image_vector)
+            written["image"] = ivec
+            img_payload = {**base_payload, "modality": "image", "text": text_blob}
+            if thumbnail_b64 and self.store_thumbnails:
+                img_payload["thumbnail_b64"] = thumbnail_b64
+            points.append(PointStruct(
+                id=_point_id(item_id, "image"), vector=ivec, payload=img_payload,
+            ))
+
+        if points:
+            self.client.upsert(collection_name=self.collection, points=points)
+        return written
+
+    def search_by_vector(self, vector: Sequence[float], owner_id: Optional[int] = None, limit: int = 5) -> List[Dict[str, Any]]:
+        """Similarity search with a vector the caller already has (e.g. items.embedding)."""
+        return self._search(vector, owner_id, limit)
+
+    def get_item_points(self, item_ids: Sequence[str], modality: str = "image") -> Dict[str, Dict[str, Any]]:
+        """Fetch one point's payload per item (default: the image point, which carries the thumbnail)."""
+        if not item_ids:
+            return {}
+        ids = [_point_id(i, modality) for i in item_ids]
+        recs = self.client.retrieve(collection_name=self.collection, ids=ids, with_payload=True)
+        return {r.payload.get("item_id"): dict(r.payload) for r in recs if r.payload}
+
+    def ensure_payload_indexes(self) -> None:
+        """owner_id is filtered on every search — index it (idempotent, best-effort)."""
+        from qdrant_client.models import PayloadSchemaType
+        for field, schema in (("owner_id", PayloadSchemaType.INTEGER), ("item_id", PayloadSchemaType.KEYWORD)):
+            try:
+                self.client.create_payload_index(self.collection, field_name=field, field_schema=schema)
+            except Exception:
+                pass  # already exists / in-memory client
+
     # ----------------------------------------------------------------- delete
     def delete_item(self, item_id: str) -> None:
         """Remove both the text and image points for an item."""
