@@ -1,7 +1,25 @@
 // frontend/src/pages/ZoneInventoryDashboard.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, Sparkles, Flame, Layers, LogOut, Cpu, HardDrive, Video, Mic, MicOff, RefreshCw, Volume2 } from 'lucide-react';
+import { Camera, Sparkles, Flame, Layers, LogOut, Cpu, HardDrive, Video, Mic, MicOff, RefreshCw, Volume2, ImageOff, PlusCircle, ArrowLeft, Search } from 'lucide-react';
 import { useAudioWS } from '../hooks/useAudioWS';
+
+// Images come back from Qdrant as base64 thumbnails already wrapped in a
+// data URL by the backend (or, later, an S3/GCS URL in `image_url`).
+function Thumb({ src, alt, className = '' }) {
+  if (!src) {
+    return (
+      <div className="w-full h-full flex items-center justify-center text-slate-700">
+        <ImageOff className="w-6 h-6" />
+      </div>
+    );
+  }
+  return <img src={src} alt={alt} className={`w-full h-full object-cover ${className}`} />;
+}
+
+const authHeaders = (extra = {}) => ({
+  'Authorization': `Bearer ${localStorage.getItem('vision_assist_token')}`,
+  ...extra,
+});
 
 export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraFeed }) {
   const [zones, setZones] = useState([]);
@@ -20,6 +38,11 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
   const [registeredObjects, setRegisteredObjects] = useState([]);
   const [identifiedObjects, setIdentifiedObjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  // null = live zone feed (top 5 from zone_cameras_embeddings);
+  // {id, name} = showing Qdrant item_embeddings matches for a registered item.
+  const [matchMode, setMatchMode] = useState(null);
+  const matchModeRef = useRef(null);
+  const [registeringId, setRegisteringId] = useState(null);
 
   const [token, setToken] = useState(localStorage.getItem('vision_assist_token'));
 
@@ -127,9 +150,7 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
   // 2. Fetch Registered Items from Backend DB / Qdrant
   const fetchRegisteredObjects = async () => {
     try {
-      const res = await fetch('/api/v1/items/registered', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('vision_assist_token')}` }
-      });
+      const res = await fetch('/api/v1/items/registered', { headers: authHeaders() });
       if (res.ok) {
         const data = await res.json();
         setRegisteredObjects(data.items || []);
@@ -139,13 +160,12 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
     }
   };
 
-  // 3. Fetch Active Zone Objects Identified by YOLO / VisionTracker
+  // 3. Top 5 objects seen on this zone's live feed (Qdrant zone_cameras_embeddings, RRF-ranked)
   const fetchZoneIdentifiedObjects = async (zoneId) => {
     try {
-      const res = await fetch(`/api/v1/zones/${zoneId}/detected`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('vision_assist_token')}` }
-      });
-      if (res.ok) {
+      const res = await fetch(`/api/v1/zones/${zoneId}/detected?limit=5`, { headers: authHeaders() });
+      // Don't clobber a registered-item match view that was opened mid-request.
+      if (res.ok && !matchModeRef.current) {
         const data = await res.json();
         setIdentifiedObjects(data.detected_items || []);
       }
@@ -162,6 +182,8 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
   // Fetch zone items & setup polling whenever selectedZone changes
   useEffect(() => {
     if (!selectedZone) return;
+    matchModeRef.current = null;
+    setMatchMode(null);
     setLoading(true);
     Promise.all([
       fetchRegisteredObjects(),
@@ -169,7 +191,7 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
     ]).finally(() => setLoading(false));
 
     const interval = setInterval(() => {
-      fetchZoneIdentifiedObjects(selectedZone);
+      if (!matchModeRef.current) fetchZoneIdentifiedObjects(selectedZone);
     }, 9500);
 
     return () => clearInterval(interval);
@@ -187,54 +209,72 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
     }
   }, [transcript, aiResponse]);
 
-  // 4. Search Database for Registered Item
-  const handleSearchRegisteredItem = async (itemName) => {
-    setSearchQuery(itemName);
+  // 4. Registered item clicked -> its embedding (Postgres items.embedding) is
+  //    searched against Qdrant item_embeddings; matches replace the
+  //    Objects Identified panel until "Back to live feed".
+  const handleSearchRegisteredItem = async (item) => {
+    setSearchQuery(item.name);
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setChatMessages(prev => [...prev, { sender: 'user', message: `Query: ${itemName}`, timestamp: timeStr }]);
-    
+    setChatMessages(prev => [...prev, { sender: 'user', message: `Query: ${item.name}`, timestamp: timeStr }]);
+
     try {
-      const res = await fetch('/api/v1/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('vision_assist_token')}`
-        },
-        body: JSON.stringify({ query: itemName, zone_id: selectedZone })
-      });
-      const data = await res.json();
-      const responseMsg = data.message || `Found ${itemName} in zone ${selectedZone}.`;
-      handleAssistantResponse(responseMsg);
+      const res = await fetch(`/api/v1/items/${encodeURIComponent(item.id)}/matches?limit=5`, { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        handleAssistantResponse(data.detail || `Unable to look up ${item.name} in the vector index.`);
+        return;
+      }
+      const mode = { id: item.id, name: item.name };
+      matchModeRef.current = mode;
+      setMatchMode(mode);
+      setIdentifiedObjects(data.matches || []);
+      const others = (data.matches || []).filter(m => !m.is_self);
+      handleAssistantResponse(
+        others.length
+          ? `${item.name}: ${others.length} similar registered item${others.length > 1 ? 's' : ''}, closest is "${others[0].name}" (${(others[0].confidence * 100).toFixed(0)}% similarity).`
+          : `${item.name} is in the vector index; no other similar registered items yet.`
+      );
     } catch {
-      handleAssistantResponse(`Unable to locate ${itemName} in active vector indices.`);
+      handleAssistantResponse(`Unable to locate ${item.name} in active vector indices.`);
     }
   };
 
-  // 5. Register Identified Object into DB Vector Store
+  const handleBackToLiveFeed = () => {
+    matchModeRef.current = null;
+    setMatchMode(null);
+    setIdentifiedObjects([]);
+    if (selectedZone) fetchZoneIdentifiedObjects(selectedZone);
+  };
+
+  // 5. Register button -> copy the sighting (image + metadata + vector) from
+  //    zone_cameras_embeddings into item_embeddings; backend stores the
+  //    returned embedding in Postgres items.embedding.
   const handleRegisterIdentifiedItem = async (item) => {
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     setChatMessages(prev => [...prev, { sender: 'user', message: `Register object: ${item.name}`, timestamp: timeStr }]);
+    setRegisteringId(item.id);
+
+    const body = item.detection_id
+      ? { detection_id: item.detection_id }
+      : { name: item.name, image: item.image, zone_id: selectedZone, confidence: item.confidence };
 
     try {
       const res = await fetch('/api/v1/items/register', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('vision_assist_token')}`
-        },
-        body: JSON.stringify({ 
-          name: item.name, 
-          image: item.image, 
-          zone_id: selectedZone,
-          confidence: item.confidence 
-        })
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(body),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        handleAssistantResponse(`Successfully registered "${item.name}" to database persistence!`);
+        handleAssistantResponse(`Registered "${data.item_name || item.name}" to the item vector index.`);
         fetchRegisteredObjects(); // Refresh left panel list
+      } else {
+        handleAssistantResponse(`Failed to register ${item.name}: ${data.detail || res.statusText}`);
       }
     } catch {
       handleAssistantResponse(`Failed to register ${item.name}. Check backend log stream.`);
+    } finally {
+      setRegisteringId(null);
     }
   };
 
@@ -299,16 +339,16 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
                 registeredObjects.map((item) => (
                   <div 
                     key={item.id}
-                    onClick={() => handleSearchRegisteredItem(item.name)}
-                    className="group bg-slate-950/70 border border-slate-800 hover:border-cyan-500/50 rounded-xl p-3 flex flex-col items-center justify-between cursor-pointer transition-all hover:shadow-lg hover:shadow-cyan-950/40"
+                    onClick={() => handleSearchRegisteredItem(item)}
+                    className={`group bg-slate-950/70 border ${matchMode?.id === item.id ? 'border-cyan-500' : 'border-slate-800'} hover:border-cyan-500/50 rounded-xl p-3 flex flex-col items-center justify-between cursor-pointer transition-all hover:shadow-lg hover:shadow-cyan-950/40`}
                   >
                     <div className="w-full aspect-square bg-slate-900 rounded-lg overflow-hidden mb-3 border border-slate-800">
-                      <img src={item.image || 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=150'} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      <Thumb src={item.image_url || item.image} alt={item.name} className="group-hover:scale-105 transition-transform" />
                     </div>
                     <div className="text-center">
                       <span className="block font-medium text-slate-100 text-sm">{item.name}</span>
                       <span className="text-[11px] text-amber-400/90 underline group-hover:text-amber-300">
-                        (Click to query in zones)
+                        (Click to find matches)
                       </span>
                     </div>
                   </div>
@@ -347,7 +387,20 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
           <div>
             <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
               <h2 className="font-semibold text-sm text-slate-200 tracking-wide uppercase flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Objects Identified
+                {matchMode ? (
+                  <>
+                    <Search className="w-3.5 h-3.5 text-cyan-400" />
+                    <span className="normal-case">Matches: {matchMode.name}</span>
+                    <button
+                      onClick={handleBackToLiveFeed}
+                      className="ml-1 flex items-center gap-1 text-[10px] font-medium normal-case text-cyan-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-0.5 rounded cursor-pointer"
+                    >
+                      <ArrowLeft className="w-3 h-3" /> Live feed
+                    </button>
+                  </>
+                ) : (
+                  <><span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" /> Objects Identified <span className="text-[10px] text-slate-500 normal-case font-normal">top 5</span></>
+                )}
               </h2>
               
               {/* Dynamic Zone Selector */}
@@ -376,25 +429,43 @@ export default function ZoneInventoryDashboard({ user, onLogout, onToggleCameraF
             <div className="grid grid-cols-3 gap-3">
               {identifiedObjects.length > 0 ? (
                 identifiedObjects.map((obj) => (
-                  <div 
+                  <div
                     key={obj.id}
-                    onClick={() => handleRegisterIdentifiedItem(obj)}
-                    className="group bg-slate-950/80 border border-slate-800 hover:border-emerald-500/50 rounded-xl p-2 flex flex-col items-center justify-between cursor-pointer transition-all"
+                    title={obj.description || obj.name}
+                    className={`group bg-slate-950/80 border ${obj.is_self ? 'border-cyan-600/60' : 'border-slate-800'} hover:border-emerald-500/50 rounded-xl p-2 flex flex-col items-center justify-between transition-all`}
                   >
                     <div className="w-full aspect-square bg-slate-900 rounded-lg overflow-hidden mb-2 border border-slate-800">
-                      <img src={obj.image || 'https://images.unsplash.com/photo-1583209814632-f72be6e06824?w=150'} alt={obj.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      <Thumb src={obj.image_url || obj.image} alt={obj.name} className="group-hover:scale-105 transition-transform" />
                     </div>
-                    <div className="text-center">
-                      <span className="block font-medium text-slate-200 text-xs">{obj.name}</span>
-                      <span className="text-[10px] text-amber-400/90 underline group-hover:text-amber-300">
-                        (Click to register)
-                      </span>
+                    <div className="text-center w-full">
+                      <span className="block font-medium text-slate-200 text-xs truncate">{obj.name}</span>
+                      {typeof obj.confidence === 'number' && (
+                        <span className="block text-[10px] text-slate-400 font-mono">
+                          {matchMode ? 'sim' : 'conf'} {(obj.confidence * 100).toFixed(0)}%
+                          {!matchMode && obj.sightings > 1 ? ` · ${obj.sightings}x` : ''}
+                          {obj.is_self ? ' · this item' : ''}
+                        </span>
+                      )}
+                      {!matchMode && (
+                        <button
+                          onClick={() => handleRegisterIdentifiedItem(obj)}
+                          disabled={registeringId === obj.id}
+                          className="mt-1.5 w-full flex items-center justify-center gap-1 text-[10px] font-semibold text-emerald-300 bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-800/60 rounded px-1.5 py-1 cursor-pointer disabled:opacity-50 disabled:cursor-wait"
+                        >
+                          {registeringId === obj.id
+                            ? <RefreshCw className="w-3 h-3 animate-spin" />
+                            : <PlusCircle className="w-3 h-3" />}
+                          Register image
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))
               ) : (
                 <div className="col-span-3 text-center py-6 text-xs text-slate-500">
-                  Scanning zone stream for objects...
+                  {matchMode
+                    ? 'No matches in the item vector index.'
+                    : 'No objects yet - open Camera Stream for this zone to start capturing.'}
                 </div>
               )}
             </div>

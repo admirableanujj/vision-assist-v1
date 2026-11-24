@@ -44,6 +44,12 @@ services:
       - VISION_CUSTOM_CLASSES=${VISION_CUSTOM_CLASSES:-}
       # - STT_PROVIDER=${STT_PROVIDER:-faster-whisper}
       - STT_PROVIDER=${STT_PROVIDER}
+      # Qdrant: item_embeddings (registered items) + zone_cameras_embeddings
+      # (live stream sightings). Key comes from the same Docker secret the
+      # qdrant service uses.
+      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
+      - QDRANT_API_KEY_FILE=/run/secrets/qdrant_api_key
+      - ZONE_EMBED_INTERVAL_S=${ZONE_EMBED_INTERVAL_S:-5}
     secrets:
       - postgres_password
       - qdrant_api_key

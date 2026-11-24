@@ -48,7 +48,13 @@ export function useVisionWS(isStreamActive = true, engine = 'yolo', zoneId = 'zo
 
     // Determine WebSocket protocol based on page protocol
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/vision?engine=${encodeURIComponent(engine)}&zone=${encodeURIComponent(zoneId)}`;
+    // The JWT rides along as a query param (browsers can't set headers on a
+    // WebSocket) so the backend can verify zone ownership and persist the
+    // detections it returns into Qdrant's zone_cameras_embeddings collection.
+    const token = localStorage.getItem('vision_assist_token');
+    const params = new URLSearchParams({ engine, zone: String(zoneId) });
+    if (token) params.set('token', token);
+    const wsUrl = `${protocol}//${window.location.host}/ws/vision?${params.toString()}`;
 
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
